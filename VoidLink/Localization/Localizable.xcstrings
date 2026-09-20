@@ -95,6 +95,7 @@
     },
     "  disconnect  " : {
       "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -164,6 +165,7 @@
     },
     "  Launch" : {
       "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -279,6 +281,7 @@
     },
     " Add Host" : {
       "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -371,6 +374,7 @@
     },
     "!ML_TEST_RESULT_INCONCLUSIVE" : {
       "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -10599,29 +10603,6 @@
         }
       }
     },
-    "FullScr/Window" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全屏/窗口"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全螢幕/視窗"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全螢幕/視窗"
-          }
-        }
-      }
-    },
     "Full-Screen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10641,6 +10622,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "全螢幕"
+          }
+        }
+      }
+    },
+    "FullScr/Window" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全屏/窗口"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全螢幕/視窗"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全螢幕/視窗"
           }
         }
       }
