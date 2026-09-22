@@ -1376,6 +1376,9 @@ static NSMutableSet* hostList;
         }
     }
     else {
+#if TARGET_OS_TV
+        [self.settingsViewController consumeTvOSInitialSettingsSnapshotForMenuPresentation];
+#endif
         if(self.revealViewController.isStreaming) self.settingsExpandedInStreamView = true; //notify mainFrameViewContorller that this is a setting expansion in stream view, some settings shall be disabled.
         if (@available(iOS 13.0, *)) [ControllerNavigator setUINavigationDelegate:self.settingsViewController];
         self.navigationItem.leftBarButtonItems = PublicUtils.isTVOS
@@ -1728,9 +1731,12 @@ static NSMutableSet* hostList;
 
 - (void)applyNavBarAppearance{
 #if TARGET_OS_TV
-    self.navigationController.navigationBar.backgroundColor = [UIColor clearColor];
-    self.navigationController.navigationBar.barTintColor = PublicUtils.isTVOS ? UIColor.clearColor : ThemeManager.hostViewBackgroundColor;
-    self.navigationController.navigationBar.shadowImage = [UIImage new];
+    UINavigationBar *navigationBar = self.navigationController.navigationBar;
+    UIColor *backgroundColor = ThemeManager.hostViewBackgroundColor;
+    navigationBar.backgroundColor = backgroundColor;
+    navigationBar.barTintColor = backgroundColor;
+    navigationBar.translucent = NO;
+    navigationBar.shadowImage = [UIImage new];
 #else
     if (@available(iOS 13.0, *)) {
         self.navigationController.navigationBar.standardAppearance.backgroundColor = [UIColor clearColor]; // old ios depend on this, do not remove
@@ -1863,7 +1869,9 @@ static NSMutableSet* hostList;
         UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:symbolSize weight:PublicUtils.isTVOS ? UIImageSymbolWeightRegular : UIImageSymbolWeightMedium ];
         UIImage *image = [[UIImage systemImageNamed:@"sidebar.left" withConfiguration:config] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
         [_settingsButton setImage:image];
-        _settingsButton.imageInsets = PublicUtils.liquidGlassEnabled ? UIEdgeInsetsMake(0, 0, 0, 0.55) : UIEdgeInsetsMake(10, 10, 0, 0);
+        _settingsButton.imageInsets = PublicUtils.liquidGlassEnabled
+        ? UIEdgeInsetsMake(0, 0, 0, 0.55)
+        : (PublicUtils.tvOS26Aavailable ? UIEdgeInsetsMake(10, 10, 0, 0) : UIEdgeInsetsMake(0, 0, 0, 0));
         if(PublicUtils.liquidGlassEnabled){
             // if(@available(iOS 26.0, *)) _settingsButton.hidesSharedBackground = YES;
             _settingsButton.tintColor = ThemeManager.appPrimaryColor;
@@ -1968,6 +1976,17 @@ static NSMutableSet* hostList;
     if (@available(iOS 13.0, *)) [GamepadNavigationIllustrationHud updateCurrentTheme];
 
     [self.hostCollectionVC updateTheme];
+    [self updateAppCollectionTheme];
+}
+
+- (void)updateAppCollectionTheme {
+    for (UICollectionViewCell *cell in self.collectionView.visibleCells) {
+        for (UIView *view in cell.subviews) {
+            if ([view isKindOfClass:[UIAppView class]]) {
+                [(UIAppView *)view updateTheme];
+            }
+        }
+    }
 }
 
 // Called when the system's theme (light/dark mode) changes
@@ -2442,9 +2461,15 @@ static NSMutableSet* hostList;
 {
     [super viewWillAppear:NO];
 
+#if TARGET_OS_TV
+    // StreamFrameViewController hides the navigation bar. Restore it before
+    // rebuilding the collection views so their first layout uses final safe-area geometry.
+    [self.navigationController setNavigationBarHidden:NO animated:NO];
+#endif
+
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(updateTheme)
-                                                 name:ThemeManager.ThemeDidChangeNotification
+                                             name:ThemeManager.ThemeDidChangeNotification
                                                object:nil];
 
     /* this makes background color works*/
