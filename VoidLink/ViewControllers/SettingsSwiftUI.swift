@@ -241,6 +241,7 @@ private let settingsLegacyHelpByStackIdentifier: [String: SettingsLegacyHelpCont
     "relativeTouchSlideThresholdStack": .init(messageKey: "relativeTouchSlideThresholdStackTip", learnMoreURLKey: "relativeTouchSlideThresholdStackLink"),
     "ctrlDownForPinchStack": .init(messageKey: "ctrlDownForPinchStackTip", learnMoreURLKey: nil),
     "onScreenWidgetStack": .init(messageKey: "onScreenWidgetStackTip", learnMoreURLKey: "onScreenWidgetStackDoc"),
+    "showExternalTrackpadStack": .init(messageKey: "Show the trackpad surface on your device while streaming to an external display. Turn this off for a pure-black screen; touch and rotation still work. Turn it back on here or from the in-stream toolbox.", learnMoreURLKey: nil),
 
     // Controller
     "controllerNavigationStack": .init(messageKey: "controllerNavigationStackTip", learnMoreURLKey: nil),
@@ -320,6 +321,7 @@ enum SettingsItemID: String, Hashable, Identifiable {
     case scrollSensitivity = "scrollSensitivityStack"
     case pinchSensitivity = "pinchSensitivityStack"
     case onScreenWidget = "onScreenWidgetStack"
+    case showExternalTrackpad = "showExternalTrackpadStack"
     case buttonVisualFeedback = "buttonVisualFeedbackStack"
     case trackTouchPoint = "trackTouchPointStack"
 
@@ -446,6 +448,7 @@ enum SettingsItemID: String, Hashable, Identifiable {
         case .scrollSensitivity: return "Scroll Sensitivity"
         case .pinchSensitivity: return "Pinch Sensitivity"
         case .onScreenWidget: return "On-Screen Widgets"
+        case .showExternalTrackpad: return "Show Trackpad Display"
         case .buttonVisualFeedback: return "Button Visual Feedback"
         case .trackTouchPoint: return "Touch Point Tracking"
         case .controllerNavigation: return "Controller Navigation"
@@ -1212,6 +1215,7 @@ final class SettingsItemRegistry: ObservableObject {
     let scrollSensitivity = SettingsItemModel<Double>(id: .scrollSensitivity, value: 1)
     let pinchSensitivity = SettingsItemModel<Double>(id: .pinchSensitivity, value: 1)
     let onScreenWidget = SettingsItemModel<Int>(id: .onScreenWidget, value: 0)
+    let showExternalTrackpad = SettingsItemModel<Bool>(id: .showExternalTrackpad, value: GenericUtils.externalTrackpadDisplayVisible)
     let buttonVisualFeedback = SettingsItemModel<Bool>(id: .buttonVisualFeedback, value: true)
     let trackTouchPoint = SettingsItemModel<Bool>(id: .trackTouchPoint, value: false)
 
@@ -1342,6 +1346,7 @@ final class SettingsItemRegistry: ObservableObject {
             scrollSensitivity.objectWillChange,
             pinchSensitivity.objectWillChange,
             onScreenWidget.objectWillChange,
+            showExternalTrackpad.objectWillChange,
             buttonVisualFeedback.objectWillChange,
             trackTouchPoint.objectWillChange,
 
@@ -1738,6 +1743,7 @@ final class SettingsSession: NSObject, ObservableObject {
     @Published private(set) var isGameProfileModified = false
     fileprivate let itemRegistry = SettingsItemRegistry()
     private var itemRegistryCancellable: AnyCancellable?
+    private var externalTrackpadPreferenceCancellable: AnyCancellable?
 
     fileprivate let navigationState = SettingsNavigationState()
     var highlightedID: String? {
@@ -1955,6 +1961,12 @@ final class SettingsSession: NSObject, ObservableObject {
         resolvedThemeStyle = ThemeManager.userInterfaceStyle().rawValue
         self.presentingController = presentingController
         super.init()
+        externalTrackpadPreferenceCancellable = NotificationCenter.default
+            .publisher(for: Notification.Name(GenericUtils.externalTrackpadDisplayDidChangeNotification))
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.itemRegistry.showExternalTrackpad.value = GenericUtils.externalTrackpadDisplayVisible
+            }
         itemRegistryCancellable = itemRegistry.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] in
@@ -2586,6 +2598,14 @@ final class SettingsSession: NSObject, ObservableObject {
                 onValueChanged: { session in
                     guard session.itemRegistry.onScreenWidget.value == OnScreenControlsLevel.custom.rawValue, !self.isStreaming else { return }
                     session.openCustomOnScreenWidgetEditor()
+                }
+            ),
+            toggleItem(
+                \.showExternalTrackpad,
+                isAvailable: !PublicUtils.isTVOS,
+                hasInfo: true,
+                onValueChanged: { session in
+                    GenericUtils.externalTrackpadDisplayVisible = session.itemRegistry.showExternalTrackpad.value
                 }
             ),
             toggleItem(

@@ -190,6 +190,9 @@ typedef NS_ENUM(NSInteger, SWRevealToggleAnimationType)
 
 @property (nonatomic, strong) UINavigationBar *dockedNavBar;
 
+// The local trackpad can rotate independently of the external video display.
+@property (nonatomic) BOOL externalTrackpadActive;
+
 - (void)setPrimaryViewController:(UIViewController*)viewController;
 
 /* Basic API */

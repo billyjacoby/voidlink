@@ -55,6 +55,7 @@ import ObjectiveC.runtime
         func disconnectAndQuitApp()
         func enterPip()
         func bringUpToolboxMenu()
+        func toggleExternalTrackpadDisplay()
         func openWidgetLayoutTool()
         func openWidgetProfileTable(pickProfile: Bool)
         func bringUpSoftKeyboard()
@@ -90,6 +91,7 @@ import ObjectiveC.runtime
     @objc public var oscProfile: OSCProfile
     
     @objc public var widgetType: WidgetTypeEnum = WidgetTypeEnum.uninitialized
+    private var trackpadDisplayObserver: NSObjectProtocol?
     
     @objc static public var editMode: Bool = false
     @objc static public var buttonVisualFeedbackEnabled: Bool = true
@@ -621,6 +623,16 @@ import ObjectiveC.runtime
         self.onScreenControls = OnScreenControls.shared()
 
         setupView()
+
+        if functionalButtonString == "TRACKPADDISPLAY" {
+            trackpadDisplayObserver = NotificationCenter.default.addObserver(
+                forName: Notification.Name(GenericUtils.externalTrackpadDisplayDidChangeNotification),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.setupAtrributedText()
+            }
+        }
     }
     
     required init?(coder: NSCoder) {
@@ -691,6 +703,7 @@ import ObjectiveC.runtime
          && (buttonMode == .slideAndHold || buttonMode == .slideToToggle)))*/
         self.hasTrackPoint = true
         self.hasNonEditableLabel = (self.cmdString == "DISABLETOUCH"
+                                    || self.cmdString == "TRACKPADDISPLAY"
                                     || self.cmdString == "GAMEPADOVERLAY"
                                     || self.cmdString == "DISABLETILT"
                                     || self.cmdString == "NOSINGLETOUCH")
@@ -1124,6 +1137,10 @@ import ObjectiveC.runtime
             
 #if !os(tvOS)
             switch cmdString {
+            case "TRACKPADDISPLAY":
+                self.nonEditableWidgetLabel = OnScreenWidgetView.editMode
+                    ? "Trackpad Display".localized
+                    : (GenericUtils.externalTrackpadDisplayVisible ? "Hide Trackpad".localized : "Show Trackpad".localized)
             case "GAMEPADOVERLAY":
                 self.nonEditableWidgetLabel =  OnScreenWidgetView.gamepadOverlayFLag ? "=GamepadOverlayOn".localized : "=GamepadOverlayOff".localized
             case "DISABLETOUCH":
@@ -3094,6 +3111,8 @@ import ObjectiveC.runtime
             }
         case "TOOLBOX":
             self.functionalWidgetDelegate?.bringUpToolboxMenu()
+        case "TRACKPADDISPLAY":
+            self.functionalWidgetDelegate?.toggleExternalTrackpadDisplay()
         case "PIP":
             self.functionalWidgetDelegate?.enterPip()
         case "WIDGETTOOL":
@@ -4445,6 +4464,9 @@ import ObjectiveC.runtime
     }
     
 deinit {
+        if let trackpadDisplayObserver {
+            NotificationCenter.default.removeObserver(trackpadDisplayObserver)
+        }
         // print("onScreenWidgetView deinit \(self.widgetLabel))")
     }
 }

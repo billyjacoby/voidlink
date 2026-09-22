@@ -323,9 +323,77 @@ class OSCProfilesManager: NSObject {
             guard let profileDecoded = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: Self.profileCodingClasses, from: profileEncoded) as? OSCProfile else {
                 continue
             }
+            addTrackpadDisplayToDefaultWidgets(in: profileDecoded)
             profilesDecoded.add(profileDecoded)
         }
         return profilesDecoded
+    }
+
+    /// Extend the built-in Widgets folder when loading old or new templates.
+    /// Keep all existing archived widgets and positions, and leave custom
+    /// profiles alone. Copies of Default naturally inherit the new button.
+    private func addTrackpadDisplayToDefaultWidgets(in profile: OSCProfile) {
+        guard profile.name == "Default" else { return }
+        var states: [(index: Int, state: OnScreenButtonState)] = []
+        for (index, value) in profile.buttonStatesEncoded.enumerated() {
+            guard let data = value as? Data,
+                  let state = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: Self.buttonStateCodingClasses, from: data) as? OnScreenButtonState else {
+                return
+            }
+            states.append((index, state))
+        }
+        guard !states.contains(where: { $0.state.name == "TRACKPADDISPLAY" }),
+              let folder = states.first(where: { $0.state.alias == "=widgets" && $0.state.name.contains("FOLDER") }),
+              let anchor = states.first(where: { $0.state.parentSequence == folder.state.sequence && $0.state.name == "WIDGETTOOL" }),
+              let maximumSequence = states.map({ $0.state.sequence }).max(),
+              maximumSequence < Int16.max else { return }
+
+        let siblings = states.map(\.state).filter { $0.parentSequence == folder.state.sequence }
+        let origin = anchor.state.position
+        // Match the existing menu grid; prefer a new cell just above Edit layout.
+        let rowStep = siblings.compactMap { state -> CGFloat? in
+            let distance = abs(state.position.y - origin.y)
+            return abs(state.position.x - origin.x) < 0.025 && distance > 0.04 ? distance : nil
+        }.min() ?? 0.13
+        let columnStep = siblings.compactMap { state -> CGFloat? in
+            let distance = abs(state.position.x - origin.x)
+            return abs(state.position.y - origin.y) < 0.025 && distance > 0.025 ? distance : nil
+        }.min() ?? 0.09
+        let visibleStates = states.map(\.state).filter {
+            $0.widgetType == 1 && ($0.parentSequence == folder.state.sequence || $0.parentSequence == -1)
+        }
+        var position: CGPoint?
+        for row in [-1, 1, -2, 2, -3, 3] {
+            for column in [0, -1, 1, -2, 2] {
+                let candidate = CGPoint(x: origin.x + CGFloat(column) * columnStep,
+                                        y: origin.y + CGFloat(row) * rowStep)
+                guard candidate.x > columnStep / 2, candidate.x < 1 - columnStep / 2,
+                      candidate.y > rowStep / 2, candidate.y < 1 - rowStep / 2,
+                      !visibleStates.contains(where: {
+                          abs($0.position.x - candidate.x) < columnStep * 0.8 &&
+                          abs($0.position.y - candidate.y) < rowStep * 0.8
+                      }) else { continue }
+                position = candidate
+                break
+            }
+            if position != nil { break }
+        }
+        guard let position,
+              let anchorData = profile.buttonStatesEncoded[anchor.index] as? Data,
+              let button = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: Self.buttonStateCodingClasses, from: anchorData) as? OnScreenButtonState else { return }
+        button.name = "TRACKPADDISPLAY"
+        button.alias = "Trackpad Display"
+        button.sequence = maximumSequence + 1
+        button.position = position
+        button.isHidden = false
+        button.sequenceSet = []
+        var members = folder.state.sequenceSet
+        members.insert(NSNumber(value: button.sequence))
+        folder.state.sequenceSet = members
+        guard let buttonData = try? NSKeyedArchiver.archivedData(withRootObject: button, requiringSecureCoding: true),
+              let folderData = try? NSKeyedArchiver.archivedData(withRootObject: folder.state, requiringSecureCoding: true) else { return }
+        profile.buttonStatesEncoded.replaceObject(at: folder.index, with: folderData)
+        profile.buttonStatesEncoded.add(buttonData)
     }
 
     func getSelectedProfile() -> OSCProfile {

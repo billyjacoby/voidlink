@@ -39,6 +39,11 @@
 @property (assign, nonatomic) bool widgetToolOpened;
 @property (strong, nonatomic) OnScreenControls* onScreenControls;
 @property (weak, nonatomic) PencilHandler* pencilHandler;
+// Relative touch coordinates only. Nil preserves StreamView coordinates.
+@property (weak, nonatomic) UIView* relativeTouchCoordinateView;
+
+// Call on the main thread whenever the relative coordinate transform changes.
+- (void)resetRelativeTouchInput;
 
 - (void) setupStreamViewWithControllerSupport:(ControllerSupport*)controllerSupport
                           interactionDelegate:(id<UserInteractionDelegate>)interactionDelegate

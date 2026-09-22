@@ -234,6 +234,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 }
 
 - (void)updateTouchHandlerWithProfile:(OSCProfile* )profile{
+    [self resetRelativeTouchInput];
 #if TARGET_OS_TV
     touchMode = TouchDisabled;
     self->touchHandler = nil;
@@ -1876,8 +1877,18 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 #endif
 
 - (void)cleanUp{
+    [self resetRelativeTouchInput];
     [keyInputField resignFirstResponder];
     keyInputField.delegate = nil;
+}
+
+- (void)resetRelativeTouchInput {
+    NSAssert([NSThread isMainThread], @"Relative touch input must be reset on the main thread");
+#if !TARGET_OS_TV
+    if ([sessionTouchHandler isKindOfClass:[RelativeTouchHandler class]]) {
+        [(RelativeTouchHandler*)sessionTouchHandler resetInput];
+    }
+#endif
 }
 
 - (void)dealloc{

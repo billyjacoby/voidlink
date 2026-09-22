@@ -23,6 +23,7 @@
 #if !TARGET_OS_TV
 #import "CustomEdgeSlideGestureRecognizer.h"
 #import "CustomTapGestureRecognizer.h"
+#import "ExternalTrackpadView.h"
 #endif
 #import "LocalizationHelper.h"
 #import "VoidLink-Swift.h"
@@ -124,6 +125,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     UIWindow *_extWindow;
     UIView *_streamVideoRenderView;
     BOOL _externalDisplayRoutingActive;
+    BOOL _externalTrackpadActive;
     /*
      * View architecture of this viewController:
      * self.view (named `streamFrameTopLayerView` in StreamView.m, where slide & tap gestures, and onScreenControls & OnScreenWidgetView buttons are registered)
@@ -138,6 +140,8 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     MotionHandler *_motionHandler;
 
 #if !TARGET_OS_TV
+    ExternalTrackpadView *_externalTrackpadView;
+    UIDeviceOrientation _trackpadDeviceOrientation;
     CustomEdgeSlideGestureRecognizer *_slideToSettingsRecognizer;
     CustomEdgeSlideGestureRecognizer *_slideToToolboxRecognizer;
     CustomTapGestureRecognizer *_oscLayoutTapRecoginizer;
@@ -297,6 +301,14 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
         if(![toolBoxViewController.specialEntries containsObject:@"enterPip"]) [toolBoxViewController.specialEntries addObject:@"enterPip"];
     }
     else [toolBoxViewController.specialEntries removeObject:@"enterPip"];
+
+    if (_externalTrackpadActive) {
+        if (![toolBoxViewController.specialEntries containsObject:@"toggleExternalTrackpadDisplay"]) {
+            [toolBoxViewController.specialEntries addObject:@"toggleExternalTrackpadDisplay"];
+        }
+    } else {
+        [toolBoxViewController.specialEntries removeObject:@"toggleExternalTrackpadDisplay"];
+    }
     
     NSLog(@"toolBoxViewController.specialEntries %@", toolBoxViewController.specialEntries);
 }
@@ -340,6 +352,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     toolBoxViewController = [[ToolboxViewController alloc] init];
     toolBoxViewController.specialEntryDelegate = self;
     toolBoxViewController.specialEntries = [oldToolboxVC.specialEntries mutableCopy];
+    [self updateToolboxSpecialEntries];
     if(hideWidgetLayoutToolEntry) [toolBoxViewController.specialEntries removeObject:@"widgetLayoutTool"];
     toolBoxViewController.modalPresentationStyle = UIModalPresentationOverCurrentContext;
     if([GenericUtils isFirstOpeningNewToolbox]){
@@ -463,7 +476,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
         return;
     }
 
-    BOOL interactionEnabled = _magnifierViewportInteractionActive;
+    BOOL interactionEnabled = _magnifierViewportInteractionActive && !_externalTrackpadActive;
     if (@available(iOS 17.0, tvOS 17.0, *)) {
 #if !TARGET_OS_TV
         _scrollView.allowsKeyboardScrolling = false;
@@ -494,7 +507,8 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
         return;
     }
 
-    if (!_scrollView || _streamView.superview != _scrollView) {
+    // A magnifier widget must not zoom the phone's external-trackpad hit area.
+    if (_externalTrackpadActive || !_scrollView || _streamView.superview != _scrollView) {
         return;
     }
 
@@ -550,7 +564,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
         [_scrollView setShowsHorizontalScrollIndicator:NO];
         [_scrollView setShowsVerticalScrollIndicator:NO];
         [_scrollView setDelegate:self];
-        [_scrollView setBackgroundColor:UIColor.blackColor];
+        [_scrollView setBackgroundColor:_externalTrackpadActive ? UIColor.clearColor : UIColor.blackColor];
         [_scrollView setClipsToBounds:YES];
         [_scrollView setBouncesZoom:NO];
         [_scrollView setMinimumZoomScale:0.1f];
@@ -720,6 +734,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
 
     NSLog(@"frameview gestures: %d", (uint32_t)[self.view.gestureRecognizers count]);
     NSLog(@"streamview gestures: %d", (uint32_t)[_streamView.gestureRecognizers count]);
+    [self updateExternalTrackpad];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -906,6 +921,21 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     _spinner.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2 - _stageLabel.frame.size.height - _spinner.frame.size.height);
     
     _oscProfile = [[OSCProfilesManager sharedManager:CGRectZero] getSelectedProfile];
+
+#if !TARGET_OS_TV
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(externalDisplayRoutingChanged:)
+                                                 name:@"ScreenChanged"
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(trackpadDeviceOrientationChanged:)
+                                                 name:UIDeviceOrientationDidChangeNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(externalTrackpadVisibilityChanged:)
+                                                 name:GenericUtils.externalTrackpadDisplayDidChangeNotification
+                                               object:nil];
+#endif
     
     _controllerSupport = [[ControllerSupport alloc] initWithConfig:self.streamConfig delegate:self];
     _inactivityTimer = nil;
@@ -1152,6 +1182,12 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
         profile = [OSCProfilesManager sharedManager:CGRectZero].getSelectedProfile;
     }
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_externalTrackpadActive) {
+            // Video zoom/offset must not shrink the local trackpad's touch area.
+            [self resetMagnifierTransformState];
+            [self layoutExternalTrackpad];
+            return;
+        }
         [self setMagnifierViewportInteractionEnabled:true];
         CGPoint streamViewOffset = CGPointMake(profile.normalizedStreamViewOffset.x*self.view.bounds.size.width, profile.normalizedStreamViewOffset.y*self.view.bounds.size.height);
         [self restoreMagnifierStreamViewWithOffset:streamViewOffset scale:profile.streamViewScale animated:YES];
@@ -1544,11 +1580,191 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
 #endif
     }
 #endif
+    [self updateExternalTrackpad];
 }
 
 - (void)stopExternalDisplayRouting {
     _externalDisplayRoutingActive = NO;
     [self reloadAirPlayConfig];
+}
+
+#if !TARGET_OS_TV
+// These angles express each interface's upright axes in portrait screen space.
+static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
+    switch (orientation) {
+        case UIInterfaceOrientationLandscapeLeft: return -M_PI_2;
+        case UIInterfaceOrientationLandscapeRight: return M_PI_2;
+        case UIInterfaceOrientationPortraitUpsideDown: return M_PI;
+        default: return 0;
+    }
+}
+
+- (UIInterfaceOrientation)trackpadInterfaceOrientation {
+    switch (_trackpadDeviceOrientation) {
+        case UIDeviceOrientationPortrait: return UIInterfaceOrientationPortrait;
+        case UIDeviceOrientationPortraitUpsideDown: return UIInterfaceOrientationPortraitUpsideDown;
+        case UIDeviceOrientationLandscapeLeft: return UIInterfaceOrientationLandscapeRight;
+        case UIDeviceOrientationLandscapeRight: return UIInterfaceOrientationLandscapeLeft;
+        default:
+            if (@available(iOS 13.0, *)) {
+                return self.view.window.windowScene.interfaceOrientation;
+            }
+            return UIApplication.sharedApplication.statusBarOrientation;
+    }
+}
+
+- (void)externalDisplayRoutingChanged:(NSNotification *)notification {
+    if (notification.object == [self externalDisplayRenderView]) {
+        [self updateExternalTrackpad];
+    }
+}
+
+- (void)externalTrackpadVisibilityChanged:(NSNotification *)notification {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self updateExternalTrackpad];
+        });
+        return;
+    }
+    [self updateExternalTrackpad];
+}
+
+- (void)trackpadDeviceOrientationChanged:(NSNotification *)notification {
+    if (!_externalTrackpadActive) return;
+    UIDeviceOrientation orientation = UIDevice.currentDevice.orientation;
+    // Keep the last upright orientation when the phone is laid flat on a desk.
+    if (!UIDeviceOrientationIsValidInterfaceOrientation(orientation)) return;
+    if (_trackpadDeviceOrientation == orientation) return;
+    _trackpadDeviceOrientation = orientation;
+    [self layoutExternalTrackpad];
+    [self updateTrackpadInterfaceOrientation];
+}
+
+- (void)updateTrackpadInterfaceOrientation {
+    if (@available(iOS 16.0, *)) {
+        for (UIViewController *controller = self; controller; controller = controller.parentViewController) {
+            [controller setNeedsUpdateOfSupportedInterfaceOrientations];
+        }
+        [self.view.window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+        UIWindowScene *scene = self.view.window.windowScene;
+        if (scene.activationState != UISceneActivationStateForegroundActive) return;
+
+        UIInterfaceOrientationMask orientations = self.revealViewController.supportedInterfaceOrientations;
+        if (_externalTrackpadActive) {
+            UIInterfaceOrientation orientation = [self trackpadInterfaceOrientation];
+            // UIKit excludes upside-down on many iPhones. The canvas and its
+            // input coordinates provide the remaining rotation in that case.
+            if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone &&
+                orientation == UIInterfaceOrientationPortraitUpsideDown) {
+                orientation = UIInterfaceOrientationPortrait;
+            }
+            if (orientation != UIInterfaceOrientationUnknown) orientations = 1 << orientation;
+        }
+        if (orientations) {
+            UIWindowSceneGeometryPreferencesIOS *preferences = [[UIWindowSceneGeometryPreferencesIOS alloc]
+                initWithInterfaceOrientations:orientations];
+            [scene requestGeometryUpdateWithPreferences:preferences errorHandler:^(NSError *error) {
+                Log(LOG_W, @"Trackpad: Interface rotation deferred: %@", error.localizedDescription);
+            }];
+        }
+    } else {
+        [UIViewController attemptRotationToDeviceOrientation];
+    }
+}
+#endif
+
+- (void)toggleExternalTrackpadDisplay {
+    GenericUtils.externalTrackpadDisplayVisible = !GenericUtils.externalTrackpadDisplayVisible;
+}
+
+- (void)updateExternalTrackpad {
+#if !TARGET_OS_TV
+    BOOL active = _externalDisplayRoutingActive && [self isAirPlaying] && _oscProfile.touchMode == RelativeTouch;
+    BOOL changed = active != _externalTrackpadActive;
+    _externalTrackpadActive = active;
+    self.revealViewController.externalTrackpadActive = active;
+    // Reconfiguration (including rotation) recreates the scroll container's
+    // appearance. Keep the decorative surface visible behind its touch area.
+    _scrollView.backgroundColor = active ? UIColor.clearColor : UIColor.blackColor;
+
+    if (active) {
+        if (!_externalTrackpadView) {
+            _externalTrackpadView = [[ExternalTrackpadView alloc] initWithFrame:self.view.bounds];
+            _externalTrackpadView.autoresizingMask = UIViewAutoresizingNone;
+        }
+        if (changed) {
+            [UIDevice.currentDevice beginGeneratingDeviceOrientationNotifications];
+            UIDeviceOrientation orientation = UIDevice.currentDevice.orientation;
+            if (UIDeviceOrientationIsValidInterfaceOrientation(orientation)) {
+                _trackpadDeviceOrientation = orientation;
+            }
+            [self resetMagnifierTransformState];
+        }
+        // Behind the transparent touch-capturing view and its controls.
+        // This decorative view never participates in hit testing.
+        UIView *content = [self streamContentContainerView];
+        if (content.superview == self.view) {
+            [self.view insertSubview:_externalTrackpadView belowSubview:content];
+        }
+        // Visibility does not change the coordinate space or disable input.
+        _externalTrackpadView.hidden = !GenericUtils.externalTrackpadDisplayVisible;
+        _streamView.relativeTouchCoordinateView = _externalTrackpadView;
+        [self layoutExternalTrackpad];
+    } else {
+        _externalTrackpadView.hidden = YES;
+        _streamView.relativeTouchCoordinateView = nil;
+        if (changed) {
+            [UIDevice.currentDevice endGeneratingDeviceOrientationNotifications];
+            // Resume the selected profile's local video geometry on disconnect.
+            [self restorePersistedStreamViewOffsetAndScaleWithProfile:_oscProfile];
+        }
+    }
+    if (changed) {
+        [_streamView resetRelativeTouchInput];
+        [self updateScrollViewInteractionState];
+        [self updateTrackpadInterfaceOrientation];
+        Log(LOG_I, @"Trackpad: External trackpad %@.", active ? @"active" : @"inactive");
+    }
+#endif
+}
+
+- (void)layoutExternalTrackpad {
+#if !TARGET_OS_TV
+    if (!_externalTrackpadActive || !_externalTrackpadView) return;
+    UIInterfaceOrientation interfaceOrientation;
+    if (@available(iOS 13.0, *)) {
+        interfaceOrientation = self.view.window.windowScene.interfaceOrientation;
+    } else {
+        interfaceOrientation = UIApplication.sharedApplication.statusBarOrientation;
+    }
+    CGFloat angle = VLTrackpadOrientationAngle([self trackpadInterfaceOrientation]) -
+        VLTrackpadOrientationAngle(interfaceOrientation);
+    CGAffineTransform transform = CGAffineTransformMakeRotation(angle);
+    CGSize size = self.view.bounds.size;
+    if (fabs(sin(angle)) > 0.5) size = CGSizeMake(size.height, size.width);
+    BOOL coordinatesChanged = !CGSizeEqualToSize(_externalTrackpadView.bounds.size, size) ||
+        !CGAffineTransformEqualToTransform(_externalTrackpadView.transform, transform);
+    _externalTrackpadView.bounds = (CGRect){CGPointZero, size};
+    _externalTrackpadView.center = CGPointMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds));
+    _externalTrackpadView.transform = transform;
+    // The external renderer owns its own bounds. Only the phone's input area
+    // follows local rotations, independently of the monitor's aspect ratio.
+    _scrollView.frame = self.view.bounds;
+    if (_scrollView.zoomScale == 1.0) {
+        _streamView.frame = self.view.bounds;
+        _scrollView.contentSize = self.view.bounds.size;
+    }
+    if (coordinatesChanged) {
+        [_streamView resetRelativeTouchInput];
+        Log(LOG_I, @"Trackpad: device orientation=%ld, interface orientation=%ld, canvas=%@.",
+            (long)_trackpadDeviceOrientation, (long)interfaceOrientation, NSStringFromCGSize(size));
+    }
+#endif
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self layoutExternalTrackpad];
 }
 
 - (void) handleViewResize{
@@ -1598,6 +1814,12 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
 }
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification {
+#if !TARGET_OS_TV
+    if (_externalTrackpadActive) {
+        [self trackpadDeviceOrientationChanged:nil];
+        [self layoutExternalTrackpad];
+    }
+#endif
     if(!PublicUtils.isIPhone){
         for(OnScreenWidgetView* widget in OnScreenWidgetView.mapping.allValues){
             if(widget.parentSequence != -1 && !widget.autoDockEnabled) continue;
@@ -2280,6 +2502,14 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     return YES;
 }
 
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    if (_externalTrackpadActive) {
+        return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone ?
+            UIInterfaceOrientationMaskAllButUpsideDown : UIInterfaceOrientationMaskAll;
+    }
+    return [super supportedInterfaceOrientations];
+}
+
 - (BOOL)prefersPointerLocked {
     // Pointer lock breaks the UIKit mouse APIs, which is a problem because
     // GCMouse is horribly broken on iOS 14.0 for certain mice. Only lock
@@ -2291,6 +2521,13 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
 
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+
+    if (_externalTrackpadActive) {
+        [_streamView resetRelativeTouchInput];
+        [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+            [self layoutExternalTrackpad];
+        }];
+    }
     
     [self resetMagnifierStreamViewWithAnimated:false];
     

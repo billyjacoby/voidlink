@@ -27,9 +27,36 @@ import UIKit
     @objc public static func startInertialScroll(){
         inertialScroller.timer?.restart()
     }
+
+    @objc public static func releasePinchModifier() {
+        if ctrlDown {
+            LiSendKeyboardEvent(CommandManager.keyboardButtonMappings["CTRL"]!, CChar(KEY_ACTION_UP), 0)
+            ctrlDown = false
+        }
+    }
+
+    @objc public static func resetGesture() {
+        pauseInertialScroll()
+        inertialScroller.vector = .zero
+        releasePinchModifier()
+    }
+
+    private static func pauseInertialScroll() {
+        inertialScroller.timer?.pause()
+        // SafeTimer.pause() is asynchronous. Drain its serial queue before
+        // changing the vector so an in-flight tick cannot send stale inertia.
+        _ = inertialScroller.timer?.isRunning()
+    }
     
     @objc public static func handleGesture(in view: UIView, with event: UIEvent) {
-        inertialScroller.timer?.pause()
+        handleGesture(in: view, coordinateView: view, with: event)
+    }
+
+    // Capture remains in the interactive view even when coordinates belong to
+    // a rotated, noninteractive trackpad overlay.
+    @objc(handleGestureIn:coordinateView:with:)
+    public static func handleGesture(in view: UIView, coordinateView: UIView, with event: UIEvent) {
+        pauseInertialScroll()
         
         let currentTouches = UITouchUtil.touches(in: view, from: event)
         guard currentTouches.count == 2 else { return }
@@ -42,10 +69,10 @@ import UIKit
         mutable.removeAll { $0 == touch1 }
         guard let touch2 = mutable.first else { return }
         
-        let currentDistance = UITouchUtil.distance(between: touch1, and: touch2, in: view)
-        let previousDistance = UITouchUtil.previousDistance(between: touch1, and: touch2, in: view)
+        let currentDistance = UITouchUtil.distance(between: touch1, and: touch2, in: coordinateView)
+        let previousDistance = UITouchUtil.previousDistance(between: touch1, and: touch2, in: coordinateView)
         
-        let midPointVector = UITouchUtil.midPointVector(between: touch1, and: touch2, in: view)
+        let midPointVector = UITouchUtil.midPointVector(between: touch1, and: touch2, in: coordinateView)
         let midPointDeltaX = midPointVector.dx
         let midPointDeltaY = midPointVector.dy
         

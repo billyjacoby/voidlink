@@ -13,6 +13,19 @@ import ObjectiveC
 import UIKit
 
 @objc public class GenericUtils: NSObject {
+
+    @objc public static let externalTrackpadDisplayDidChangeNotification = "ExternalTrackpadDisplayDidChange"
+    private static let externalTrackpadDisplayHiddenKey = "ExternalTrackpadDisplayHidden"
+
+    /// A local presentation preference, independent of touch mode and game profiles.
+    @objc public static var externalTrackpadDisplayVisible: Bool {
+        get { !UserDefaults.standard.bool(forKey: externalTrackpadDisplayHiddenKey) }
+        set {
+            guard newValue != externalTrackpadDisplayVisible else { return }
+            UserDefaults.standard.set(!newValue, forKey: externalTrackpadDisplayHiddenKey)
+            NotificationCenter.default.post(name: Notification.Name(externalTrackpadDisplayDidChangeNotification), object: nil)
+        }
+    }
     @objc public static func installSegmentedControlPreviousSelectionTracking() {
         UISegmentedControl.installPreviousSelectionTracking()
     }

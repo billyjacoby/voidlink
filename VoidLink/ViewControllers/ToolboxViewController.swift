@@ -14,6 +14,7 @@ import UIKit
     @objc optional func bringUpSoftKeyboard()
     @objc optional func enterPip()
     @objc optional func toggleStatsOverlay()
+    @objc optional func toggleExternalTrackpadDisplay()
     @objc optional func disconnectAndQuitApp()
 }
 
@@ -394,10 +395,17 @@ private typealias ToolboxWidgetPickerDelegateConformance = WidgetPickerViewContr
         #endif
     }
 
+    private func specialTitle(for id: String) -> String {
+        if id == "toggleExternalTrackpadDisplay" {
+            return GenericUtils.externalTrackpadDisplayVisible ? "Hide Trackpad Display" : "Show Trackpad Display"
+        }
+        return specialEntryAliasDic[id] ?? id
+    }
+
     private func makeEntries() -> [ToolboxEntry] {
         let specialEntries = specialEntries.compactMap { value -> ToolboxEntry? in
             guard let id = value as? String else { return nil }
-            let title = specialEntryAliasDic[id] ?? id
+            let title = specialTitle(for: id)
             return .special(id: id, title: title)
         }
 
@@ -435,7 +443,7 @@ private typealias ToolboxWidgetPickerDelegateConformance = WidgetPickerViewContr
         let currentOrder = entries.map(\.orderIdentifier)
         let specialEntries = specialEntries.compactMap { value -> ToolboxEntry? in
             guard let id = value as? String else { return nil }
-            let title = specialEntryAliasDic[id] ?? id
+            let title = specialTitle(for: id)
             return .special(id: id, title: title)
         }
         let commandEntries = CommandManager.shared.getAllCommands().enumerated().map {
@@ -841,6 +849,8 @@ private typealias ToolboxWidgetPickerDelegateConformance = WidgetPickerViewContr
             return "PiP".localized
         case "toggleStatsOverlay":
             return "Stats".localized
+        case "toggleExternalTrackpadDisplay":
+            return "Trackpad".localized
         case "disconnectAndQuitApp":
             return "Session".localized
         default:
@@ -860,6 +870,8 @@ private typealias ToolboxWidgetPickerDelegateConformance = WidgetPickerViewContr
             return "pip.enter"
         case "toggleStatsOverlay":
             return "chart.bar"
+        case "toggleExternalTrackpadDisplay":
+            return GenericUtils.externalTrackpadDisplayVisible ? "eye.slash" : "eye"
         case "disconnectAndQuitApp":
             return "power"
         default:
@@ -886,6 +898,8 @@ private typealias ToolboxWidgetPickerDelegateConformance = WidgetPickerViewContr
                 self.specialEntryDelegate?.enterPip?()
             case "toggleStatsOverlay":
                 self.specialEntryDelegate?.toggleStatsOverlay?()
+            case "toggleExternalTrackpadDisplay":
+                self.specialEntryDelegate?.toggleExternalTrackpadDisplay?()
             case "disconnectAndQuitApp":
                 self.specialEntryDelegate?.disconnectAndQuitApp?()
             default:

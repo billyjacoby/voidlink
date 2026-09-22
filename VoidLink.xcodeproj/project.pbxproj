@@ -113,6 +113,7 @@
 		A1C0DE032FBC000100000001 /* RadialMenuOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE022FBC000100000001 /* RadialMenuOverlayView.swift */; };
 		A1D500022FFC000100000001 /* authored_haptics_engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A1D500012FFC000100000001 /* authored_haptics_engine.cpp */; settings = {COMPILER_FLAGS = "-std=c++17"; }; };
 		A1F100012FFB000100000001 /* FrameInterpolator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F100002FFB000100000001 /* FrameInterpolator.swift */; };
+		E7A100032FFB000100000001 /* ExternalTrackpadView.m in Sources */ = {isa = PBXBuildFile; fileRef = E7A100022FFB000100000001 /* ExternalTrackpadView.m */; platformFilter = ios; };
 		A5E771022FFF100100000002 /* SettingsSwiftUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5E771012FFF100100000001 /* SettingsSwiftUI.swift */; };
 		A5E771042FFF100100000004 /* SettingsControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5E771032FFF100100000003 /* SettingsControls.swift */; };
 		A70100000000000000000001 /* SettingsSwiftUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5E771012FFF100100000001 /* SettingsSwiftUI.swift */; };
@@ -482,6 +483,8 @@
 		A1D4E0A22FBBBBCC00112233 /* OSCProfilesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OSCProfilesManager.swift; sourceTree = "<group>"; };
 		A1D500012FFC000100000001 /* authored_haptics_engine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = authored_haptics_engine.cpp; path = "third_party/moonlight-audio-haptics/src/core/authored_haptics_engine.cpp"; sourceTree = SOURCE_ROOT; };
 		A1F100002FFB000100000001 /* FrameInterpolator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameInterpolator.swift; sourceTree = "<group>"; };
+		E7A100012FFB000100000001 /* ExternalTrackpadView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ExternalTrackpadView.h; sourceTree = "<group>"; };
+		E7A100022FFB000100000001 /* ExternalTrackpadView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ExternalTrackpadView.m; sourceTree = "<group>"; };
 		A5E771012FFF100100000001 /* SettingsSwiftUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSwiftUI.swift; sourceTree = "<group>"; };
 		A5E771032FFF100100000003 /* SettingsControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsControls.swift; sourceTree = "<group>"; };
 		A7000000000000000002 /* VoidLink TV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "VoidLink TV.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -989,6 +992,8 @@
 				A1900E002F9A100100BA853A /* InputAccessoryBar.swift */,
 				A1B2C3D32F90000100ABCDEF /* AbstractGamepadOverlayWidgetView.swift */,
 				1817B61D2E6FD04D000D938D /* SafeTimer.swift */,
+				E7A100012FFB000100000001 /* ExternalTrackpadView.h */,
+				E7A100022FFB000100000001 /* ExternalTrackpadView.m */,
 			);
 			path = Input;
 			sourceTree = "<group>";
@@ -1506,6 +1511,7 @@
 				A5E771042FFF100100000004 /* SettingsControls.swift in Sources */,
 				A1D500022FFC000100000001 /* authored_haptics_engine.cpp in Sources */,
 				FB290D0719B2C406004C83CF /* Limelight.xcdatamodeld in Sources */,
+				E7A100032FFB000100000001 /* ExternalTrackpadView.m in Sources */,
 				9819CC22254F180F008A7C8E /* AbsoluteTouchHandler.m in Sources */,
 				9819CC14254F107A008A7C8E /* RelativeTouchHandler.m in Sources */,
 				FB1A674D2131E65900507771 /* KeyboardSupport.m in Sources */,

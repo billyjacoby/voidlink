@@ -574,6 +574,16 @@ struct WidgetPickerView: View {
 
     private let functionalButtonOptions: [FunctionalButtonOption] = [
         FunctionalButtonOption(
+            localizationKey: "Trackpad Display",
+            cmd: "TRACKPADDISPLAY",
+            tip: LocalizationHelper.localizedString(forKey: "Tap to hide or show the external trackpad display. Touch control keeps working, and this widget stays available to turn the display back on."),
+            allowsKeyboardCombination: false,
+            allowsGamepadCombination: false,
+            allowsSkillCombo: false,
+            allowsShortcutCombo: false,
+            forcedComboMode: nil
+        ),
+        FunctionalButtonOption(
             localizationKey: "=settings",
             cmd: "SETTINGS",
             tip: LocalizationHelper.localizedString(forKey: "Expands setting menu during streaming"),

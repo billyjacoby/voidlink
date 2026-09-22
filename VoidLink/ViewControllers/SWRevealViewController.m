@@ -841,7 +841,10 @@ const int FrontViewPositionNone = 0xff;
 
 // tested on iOS17.
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-    
+    if (self.externalTrackpadActive) {
+        return [self isIPhone] ? UIInterfaceOrientationMaskAllButUpsideDown : UIInterfaceOrientationMaskAll;
+    }
+
     DataManager* dataMan = [[DataManager alloc] init];
     Settings *currentSettings = [dataMan retrieveSettings];
 
