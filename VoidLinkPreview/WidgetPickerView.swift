@@ -1046,7 +1046,8 @@ struct WidgetPickerView: View {
                     Group {
                         if usesVerticalLayout {
                             VStack(alignment: .leading, spacing: pickerMetrics.panelSpacing) {
-                                widgetPoolPanel(metrics: pickerMetrics, isPadPortrait: isPadPortrait)
+                                widgetPoolPanel(metrics: pickerMetrics, isPadPortrait: isPadPortrait, isCompactPhone: isPhonePortrait,
+                                                gridMaxWidth: isPadPortrait ? min(240, contentProxy.size.width * 0.34) : nil)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: verticalPoolHeight)
 
@@ -1056,7 +1057,7 @@ struct WidgetPickerView: View {
                             }
                         } else {
                             HStack(alignment: .top, spacing: pickerMetrics.panelSpacing) {
-                                widgetPoolPanel(metrics: pickerMetrics, isPadPortrait: isPadPortrait)
+                                widgetPoolPanel(metrics: pickerMetrics, isPadPortrait: isPadPortrait, isCompactPhone: false)
                                     .frame(width: rightWidth)
 
                                 widgetPickerPanel(metrics: pickerMetrics, isPadPortrait: isPadPortrait)
@@ -1259,13 +1260,16 @@ struct WidgetPickerView: View {
         let tabHeight = isPadPortrait ? 30.0 : metrics.tabHeight
         let tabMinWidth = isPadPortrait ? 88.0 : (metrics.isPhone ? 43 : 50)
 
-        return HStack(spacing: tabSpacing) {
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: tabSpacing) {
             ForEach(availableTabs) { tab in
                 Button(action: {
                     selectedTab = tab
                 }) {
                     Text(tab.title)
                         .font(.system(size: tabFontSize, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundColor(selectedTab == tab ? Color.white : Color.black.opacity(0.56))
                         .padding(.horizontal, tabHorizontalPadding)
                         .frame(minWidth: tabMinWidth)
@@ -1299,10 +1303,13 @@ struct WidgetPickerView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             }
+            }
         }
+        .frame(height: tabHeight)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func widgetPoolPanel(metrics: WidgetPickerMetrics, isPadPortrait: Bool) -> some View {
+    private func widgetPoolPanel(metrics: WidgetPickerMetrics, isPadPortrait: Bool, isCompactPhone: Bool, gridMaxWidth: CGFloat? = nil) -> some View {
         let poolTitleFontSize = isPadPortrait ? 20.0 : metrics.poolTitleFontSize
         let poolSubtitleFontSize = isPadPortrait ? 11.0 : metrics.subtitleFontSize
         let poolHeaderSpacing = metrics.headerSpacing + (metrics.isPhone ? 0 : (isPadPortrait ? 2 : 19))
@@ -1310,7 +1317,7 @@ struct WidgetPickerView: View {
         let poolTipFontSize = isPadPortrait ? 11.0 : metrics.tipFontSize
         let poolChipHeight = isPadPortrait ? 36.0 : metrics.chipHeight
         let poolChipFontSize = isPadPortrait ? 12.0 : metrics.chipFontSize
-        let poolGridWidth: CGFloat? = isPadPortrait ? min(240, UIScreen.main.bounds.width * 0.34) : nil
+        let poolGridMaxHeight: CGFloat? = isCompactPhone ? 180 : nil
 
         return VStack(alignment: .leading, spacing: metrics.poolSectionSpacing) {
             VStack(alignment: .leading, spacing: poolHeaderSpacing) {
@@ -1340,8 +1347,8 @@ struct WidgetPickerView: View {
             )
                 .id(poolGridInteractionResetToken)
                 .aspectRatio(1, contentMode: .fit)
-                .frame(maxWidth: poolGridWidth ?? .infinity, alignment: .center)
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxHeight: poolGridMaxHeight)
+                .frame(maxWidth: gridMaxWidth ?? .infinity, alignment: .center)
 
             if keyboardPickerMode != .shortcutPicker {
                 HStack(spacing: metrics.isPhone ? 8 : 12) {

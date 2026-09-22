@@ -129,6 +129,12 @@ private typealias ToolboxWidgetPickerDelegateConformance = WidgetPickerViewContr
         CommandManager.shared.viewController = self
     }
 
+#if !os(tvOS)
+    public override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        OrientationHelper.allowedOrientations(for: self)
+    }
+#endif
+
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
 

@@ -343,8 +343,7 @@ static CGFloat scaledValue( CGFloat v1, CGFloat min2, CGFloat max2, CGFloat min1
 {
     CGRect bounds = self.bounds;
     
-    CGFloat rearRevealWidth = _c.rearViewRevealWidth;
-    if ( rearRevealWidth < 0) rearRevealWidth = bounds.size.width + _c.rearViewRevealWidth;
+    CGFloat rearRevealWidth = _c.effectiveRearViewRevealWidth;
     
     CGFloat rearXLocation = scaledValue(xLocation, -_c.rearViewRevealDisplacement, 0, 0, rearRevealWidth);
     
@@ -659,6 +658,7 @@ static CGFloat scaledValue( CGFloat v1, CGFloat min2, CGFloat max2, CGFloat min1
     NSMutableArray *_animationQueue;
     BOOL _userInteractionStore;
     __weak UIViewController *_primaryViewController;
+    NSLayoutConstraint *_dockedNavBarWidthConstraint;
     
 }
 
@@ -841,22 +841,34 @@ const int FrontViewPositionNone = 0xff;
 
 // tested on iOS17.
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-    if (self.externalTrackpadActive) {
-        return [self isIPhone] ? UIInterfaceOrientationMaskAllButUpsideDown : UIInterfaceOrientationMaskAll;
+    if (self.isStreaming && !self.externalDisplayActive) {
+        Settings *settings = [[[DataManager alloc] init] retrieveSettings];
+        if (!settings.unlockDisplayOrientation) return UIInterfaceOrientationMaskLandscape;
     }
-
-    DataManager* dataMan = [[DataManager alloc] init];
-    Settings *currentSettings = [dataMan retrieveSettings];
-
-    // NSLog(@"orientation unlocked: %d", currentSettings.unlockDisplayOrientation);
-
-    if(currentSettings.unlockDisplayOrientation) return UIInterfaceOrientationMaskAll;
-    else return [self isIPhone] ? UIInterfaceOrientationMaskLandscape : [self getCurrentOrientation];
+    return [self isIPhone] ? UIInterfaceOrientationMaskAllButUpsideDown : UIInterfaceOrientationMaskAll;
 }
 #endif
 
 - (void)viewDidLayoutSubviews{
-    // [self setupNavigationBarConstraints];
+    [super viewDidLayoutSubviews];
+    CGFloat width = self.effectiveRearViewRevealWidth;
+    if (_dockedNavBarWidthConstraint && fabs(_dockedNavBarWidthConstraint.constant - width) > 0.5) {
+        _dockedNavBarWidthConstraint.constant = width;
+        [_contentView setNeedsLayout];
+    }
+}
+
+- (CGFloat)effectiveRearViewRevealWidth {
+    CGFloat containerWidth = CGRectGetWidth(_contentView.bounds);
+    CGFloat preferredWidth = _rearViewRevealWidth < 0 ? containerWidth + _rearViewRevealWidth : _rearViewRevealWidth;
+#if !TARGET_OS_TV
+    if (containerWidth > 0) {
+        // Keep a reachable strip of the front view in compact/portrait windows,
+        // without overwriting the user's preferred landscape settings width.
+        return MAX(0, MIN(preferredWidth, containerWidth - MIN(24.0, containerWidth * 0.08)));
+    }
+#endif
+    return preferredWidth;
 }
 
 - (void)viewSafeAreaInsetsDidChange {
@@ -984,7 +996,7 @@ const int FrontViewPositionNone = 0xff;
 
 - (void)setupNavigationBar {
     // 创建导航栏
-    if (_dockedNavBar == nil || _rearViewRevealWidth != _dockedNavBar.bounds.size.width) _dockedNavBar = [[UINavigationBar alloc] init];
+    if (_dockedNavBar == nil) _dockedNavBar = [[UINavigationBar alloc] init];
 
     //_dockedNavBar = [[UINavigationBar alloc] init];
     _dockedNavBar.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1036,11 +1048,13 @@ const int FrontViewPositionNone = 0xff;
     [_contentView.rearNavView addSubview:_dockedNavBar];
 
     // 设置导航栏约束
+    _dockedNavBarWidthConstraint.active = NO;
+    _dockedNavBarWidthConstraint = [_dockedNavBar.widthAnchor constraintEqualToConstant:self.effectiveRearViewRevealWidth];
     [NSLayoutConstraint activateConstraints:@[
         [_dockedNavBar.topAnchor constraintEqualToAnchor:_contentView.rearNavView.topAnchor constant:GenericUtils.dockedNavBarTopAnchorOffset],
         [_dockedNavBar.bottomAnchor constraintEqualToAnchor:_contentView.rearNavView.bottomAnchor],
         [_dockedNavBar.leadingAnchor constraintEqualToAnchor:_contentView.rearNavView.leadingAnchor],
-        [_dockedNavBar.widthAnchor constraintEqualToConstant:_rearViewRevealWidth],
+        _dockedNavBarWidthConstraint,
     ]];
     [self layoutSettingsView];
     // NSLog(@"leak test %f %lu", CACurrentMediaTime(), _contentView.rearNavView.constraints.count);
@@ -1246,7 +1260,7 @@ const int FrontViewPositionNone = 0xff;
             break;
     }
     actionSheet.popoverPresentationController.sourceView = _contentView.rearNavView; // center of the view;
-    actionSheet.popoverPresentationController.sourceRect = CGRectMake(_rearViewRevealWidth + _moreButton.imageInsets.right - _moreButton.image.size.width/2, _contentView.rearNavView.bounds.size.height+_contentView.safeAreaInsets.top, 1.0, 1.0);
+    actionSheet.popoverPresentationController.sourceRect = CGRectMake(self.effectiveRearViewRevealWidth + _moreButton.imageInsets.right - _moreButton.image.size.width/2, _contentView.rearNavView.bounds.size.height+_contentView.safeAreaInsets.top, 1.0, 1.0);
     [self presentViewController:actionSheet animated:NO completion:nil];
 }
 
@@ -1579,7 +1593,7 @@ const int FrontViewPositionNone = 0xff;
     }
     else
     {
-        *pRevealWidth = _rearViewRevealWidth;
+        *pRevealWidth = self.effectiveRearViewRevealWidth;
         *pRevealOverdraw = _rearViewRevealOverdraw;
     }
     
@@ -1612,7 +1626,7 @@ const int FrontViewPositionNone = 0xff;
 
     int symetry = *xLocation<0 ? -1 : 1;
     
-    CGFloat xWidth = symetry < 0 ? _rightViewRevealWidth : _rearViewRevealWidth;
+    CGFloat xWidth = symetry < 0 ? _rightViewRevealWidth : self.effectiveRearViewRevealWidth;
     if ( xWidth < 0 ) xWidth = _contentView.bounds.size.width + xWidth;
     
     *progress = *xLocation/xWidth * symetry;
@@ -1625,7 +1639,7 @@ const int FrontViewPositionNone = 0xff;
 
     int symetry = *xLocation<0 ? -1 : 1;
     
-    CGFloat xWidth = symetry < 0 ? _rightViewRevealWidth : _rearViewRevealWidth;
+    CGFloat xWidth = symetry < 0 ? _rightViewRevealWidth : self.effectiveRearViewRevealWidth;
     CGFloat xOverWidth = symetry < 0 ? _rightViewRevealOverdraw : _rearViewRevealOverdraw;
     
     if ( xWidth < 0 ) xWidth = _contentView.bounds.size.width + xWidth;

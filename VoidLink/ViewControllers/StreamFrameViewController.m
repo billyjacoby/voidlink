@@ -549,7 +549,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     BOOL shouldWrapInScrollView = [self shouldWrapStreamViewInScrollView];
 
     if (shouldWrapInScrollView) {
-        if(!_scrollView) _scrollView = [[UIScrollView alloc] initWithFrame:self.view.frame];
+        if(!_scrollView) _scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
 #if !TARGET_OS_TV
         _scrollView.scrollsToTop = false;
 #endif
@@ -754,6 +754,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     
     _externalDisplayRoutingActive = YES;
     [self reloadAirPlayConfig];
+    [OrientationHelper updateSupportedOrientationsFrom:self];
 
     self->_streamView.originalFrame = self->_streamView.frame;
     
@@ -940,7 +941,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     _controllerSupport = [[ControllerSupport alloc] initWithConfig:self.streamConfig delegate:self];
     _inactivityTimer = nil;
     
-    _streamView = [[StreamView alloc] initWithFrame:self.view.frame];
+    _streamView = [[StreamView alloc] initWithFrame:self.view.bounds];
     _streamViewMagnifierContentOffset = CGPointZero;
     _streamViewMagnifierZoomScale = 1.0f;
     _magnifierViewportInteractionActive = NO;
@@ -956,7 +957,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
      1 - airplay
      */
     // A separate render view is always created to support external displays.
-    _streamVideoRenderView = (StreamView*)[[UIView alloc] initWithFrame:self.view.frame];
+    _streamVideoRenderView = (StreamView*)[[UIView alloc] initWithFrame:self.view.bounds];
     _streamVideoRenderView.bounds = _streamView.bounds;
     _streamVideoRenderView.userInteractionEnabled = false;
     [_streamView insertSubview:_streamVideoRenderView atIndex:0];
@@ -1069,8 +1070,8 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
 }
 
 - (void)keyboardDidHide{
-    _streamView.bounds = _deviceWindow.bounds;
-    _streamView.frame = _deviceWindow.frame;
+    _streamView.bounds = (CGRect){CGPointZero, self.view.bounds.size};
+    _streamView.frame = self.view.bounds;
 }
 
 - (void)handleNonStandardKeyboard:(NSNotification *)notification{
@@ -1679,7 +1680,10 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
 
 - (void)updateExternalTrackpad {
 #if !TARGET_OS_TV
-    BOOL active = _externalDisplayRoutingActive && [self isAirPlaying] && _oscProfile.touchMode == RelativeTouch;
+    BOOL externalDisplayActive = _externalDisplayRoutingActive && [self isAirPlaying];
+    BOOL externalDisplayChanged = self.revealViewController.externalDisplayActive != externalDisplayActive;
+    self.revealViewController.externalDisplayActive = externalDisplayActive;
+    BOOL active = externalDisplayActive && _oscProfile.touchMode == RelativeTouch;
     BOOL changed = active != _externalTrackpadActive;
     _externalTrackpadActive = active;
     self.revealViewController.externalTrackpadActive = active;
@@ -1724,6 +1728,8 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
         [self updateScrollViewInteractionState];
         [self updateTrackpadInterfaceOrientation];
         Log(LOG_I, @"Trackpad: External trackpad %@.", active ? @"active" : @"inactive");
+    } else if (externalDisplayChanged) {
+        [OrientationHelper updateSupportedOrientationsFrom:self];
     }
 #endif
 }
@@ -1765,21 +1771,22 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     [self layoutExternalTrackpad];
+    [OnScreenWidgetView refreshPortraitMenuLayout];
 }
 
 - (void) handleViewResize{
     viewIsBeingResized = true;
     
-    _streamView.bounds = _deviceWindow.bounds;
-    _streamView.frame = _deviceWindow.frame;
+    _streamView.bounds = (CGRect){CGPointZero, self.view.bounds.size};
+    _streamView.frame = self.view.bounds;
     
     if(![self isAirPlaying]){
-        _streamVideoRenderView.bounds = _deviceWindow.bounds;
-        _streamVideoRenderView.frame = _deviceWindow.frame;
+        _streamVideoRenderView.bounds = _streamView.bounds;
+        _streamVideoRenderView.frame = _streamView.bounds;
 
         // Handle resize for meetal renderer
         if ([_settings.renderingBackend intValue] == RENDER_METAL && self.metalViewController) {
-            self.metalViewController.view.frame = _deviceWindow.bounds;
+            self.metalViewController.view.frame = self.view.bounds;
             [self.metalViewController.view setNeedsLayout];
             [self.metalViewController.view layoutIfNeeded];
             Log(LOG_I, @"Updated Metal view bounds after resize");
@@ -2507,7 +2514,7 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
         return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone ?
             UIInterfaceOrientationMaskAllButUpsideDown : UIInterfaceOrientationMaskAll;
     }
-    return [super supportedInterfaceOrientations];
+    return [OrientationHelper allowedOrientationsFor:self];
 }
 
 - (BOOL)prefersPointerLocked {
@@ -2521,6 +2528,10 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
 
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+
+    [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        [OnScreenWidgetView refreshPortraitMenuLayout];
+    }];
 
     if (_externalTrackpadActive) {
         [_streamView resetRelativeTouchInput];

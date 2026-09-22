@@ -189,9 +189,11 @@ typedef NS_ENUM(NSInteger, SWRevealToggleAnimationType)
 @interface SWRevealViewController : UIViewController
 
 @property (nonatomic, strong) UINavigationBar *dockedNavBar;
+@property (nonatomic, readonly) CGFloat effectiveRearViewRevealWidth;
 
 // The local trackpad can rotate independently of the external video display.
 @property (nonatomic) BOOL externalTrackpadActive;
+@property (nonatomic) BOOL externalDisplayActive;
 
 - (void)setPrimaryViewController:(UIViewController*)viewController;
 

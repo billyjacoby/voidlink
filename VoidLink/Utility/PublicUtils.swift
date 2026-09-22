@@ -98,8 +98,8 @@ import UIKit
 #else
         if #available(iOS 13.0, *) {
             guard let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first(where: { $0.activationState == .foregroundActive })
+                 .compactMap({ $0 as? UIWindowScene })
+                 .first(where: { $0.activationState == .foregroundActive && $0.session.role == .windowApplication })
             else {return false}
             return windowScene.interfaceOrientation.isLandscape
         }

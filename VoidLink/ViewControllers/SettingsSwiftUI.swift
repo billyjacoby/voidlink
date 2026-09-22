@@ -276,7 +276,7 @@ private let settingsLegacyHelpByStackIdentifier: [String: SettingsLegacyHelpCont
     "audioConfigStack": .init(messageKey: "audioConfigStackTip", learnMoreURLKey: nil),
 
     // Others
-    "unlockDisplayOrientationStack": .init(messageKey: "unlockDisplayOrientationStackTip", learnMoreURLKey: nil),
+    "unlockDisplayOrientationStack": .init(messageKey: "Allow portrait and landscape while streaming on this device. When disabled, local streaming stays in landscape. App navigation and external-display controls can always rotate. Rotation does not change the configured stream resolution.", learnMoreURLKey: nil),
     "optimizeGamesStack": .init(messageKey: "optimizeGamesStackTip", learnMoreURLKey: nil),
     "softKeyboardHeightStack": .init(messageKey: "softKeyboardHeightStackTip", learnMoreURLKey: nil),
 
@@ -503,7 +503,7 @@ enum SettingsItemID: String, Hashable, Identifiable {
         case .muteInBackground: return "Mute in Background"
         case .audioConfig: return "Audio Configuration"
         case .statsOverlay: return "Statistics Overlay"
-        case .unlockDisplayOrientation: return "90° Display Rotation"
+        case .unlockDisplayOrientation: return "Rotate While Streaming"
         case .backgroundSessionTimer: return "Background Session"
         case .appTheme: return "Theme"
         case .optimizeGames: return "Optimize Game Settings"
@@ -1294,7 +1294,7 @@ final class SettingsItemRegistry: ObservableObject {
     // MARK: Others
 
     let statsOverlay = SettingsItemModel<Int>(id: .statsOverlay, value: StatsOverlayLevel.off.rawValue)
-    let unlockDisplayOrientation = SettingsItemModel<Int>(id: .unlockDisplayOrientation, value: 1)
+    let unlockDisplayOrientation = SettingsItemModel<Int>(id: .unlockDisplayOrientation, value: 0)
     let backgroundSessionTimer = SettingsItemModel<Double>(id: .backgroundSessionTimer, value: 0)
     let appTheme = SettingsItemModel<Int>(id: .appTheme, value: UIUserInterfaceStyle.light.rawValue)
     let optimizeGames = SettingsItemModel<Bool>(id: .optimizeGames, value:true)
@@ -3375,7 +3375,7 @@ final class SettingsSession: NSObject, ObservableObject {
                 options: { $0.unlockDisplayOrientationOptions },
                 distribution: .equal,
                 isAvailable: !PublicUtils.isTVOS,
-                isEnabled: { $0.unlockDisplayOrientationSelectorEnabled }
+                hasInfo: true
             ),
             sliderItem(
                 \.backgroundSessionTimer,
@@ -3831,11 +3831,10 @@ final class SettingsSession: NSObject, ObservableObject {
 
     private var chosenWidth: Int {
         if itemRegistry.usesCustomResolution.value { return max(customWidth, 256) }
-        let portrait = availableDisplaySize.width < availableDisplaySize.height
         switch itemRegistry.resolution.value {
-        case 0: return portrait ? 720 : 1280
-        case 1: return portrait ? 1080 : 1920
-        case 2: return portrait ? 2160 : 3840
+        case 0: return 1280
+        case 1: return 1920
+        case 2: return 3840
         case 3: return Int(availableSafeAreaSize.width.rounded())
         case 4: return Int(availableDisplaySize.width.rounded())
         default: return max(customWidth, 256)
@@ -3844,11 +3843,10 @@ final class SettingsSession: NSObject, ObservableObject {
 
     private var chosenHeight: Int {
         if itemRegistry.usesCustomResolution.value { return max(customHeight, 256) }
-        let portrait = availableDisplaySize.width < availableDisplaySize.height
         switch itemRegistry.resolution.value {
-        case 0: return portrait ? 1280 : 720
-        case 1: return portrait ? 1920 : 1080
-        case 2: return portrait ? 3840 : 2160
+        case 0: return 720
+        case 1: return 1080
+        case 2: return 2160
         case 3: return Int(availableSafeAreaSize.height.rounded())
         case 4: return Int(availableDisplaySize.height.rounded())
         default: return max(customHeight, 256)
@@ -3867,7 +3865,13 @@ final class SettingsSession: NSObject, ObservableObject {
         let bounds = itemRegistry.externalDisplayMode.value == 1
             ? screen.bounds
             : (presentingController?.view.window?.bounds ?? screen.bounds)
-        return CGSize(width: bounds.width * screen.scale, height: bounds.height * screen.scale)
+        return orientedNativeStreamSize(CGSize(width: bounds.width * screen.scale, height: bounds.height * screen.scale))
+    }
+
+    private func orientedNativeStreamSize(_ size: CGSize) -> CGSize {
+        let externalScreen = itemRegistry.externalDisplayMode.value == 1 && UIScreen.screens.count > 1
+        guard !externalScreen, itemRegistry.unlockDisplayOrientation.value == 0 else { return size }
+        return CGSize(width: max(size.width, size.height), height: min(size.width, size.height))
     }
 
     private var availableSafeAreaSize: CGSize {
@@ -3875,10 +3879,10 @@ final class SettingsSession: NSObject, ObservableObject {
             return availableDisplaySize
         }
         let insets = window.safeAreaInsets
-        return CGSize(
+        return orientedNativeStreamSize(CGSize(
             width: (window.bounds.width - insets.left - insets.right) * window.screen.scale,
             height: window.bounds.height * window.screen.scale
-        )
+        ))
     }
 
     private var chosenDimensions: CMVideoDimensions {

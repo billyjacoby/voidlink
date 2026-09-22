@@ -657,7 +657,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 
 - (WidgetSizeReference)getCurrentWidgetSizeReference{
     if(_widgetSizeTransition == keepWidgetSize) return longSide;
-    else if(_widgetSizeTransition == transitionWithOrientation) return self.bounds.size.width > self.bounds.size.height ? longSide : shortSide;
+    else if(_widgetSizeTransition == transitionWithOrientation) return _streamFrameTopLayerView.bounds.size.width > _streamFrameTopLayerView.bounds.size.height ? longSide : shortSide;
     else return longSide;
 }
 

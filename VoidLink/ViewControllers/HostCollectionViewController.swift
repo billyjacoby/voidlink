@@ -48,6 +48,14 @@ class HostCell: UICollectionViewCell {
         assignDelegateForHostCard()
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let cardView, cardView.size.width > 0, cardView.size.height > 0 else { return }
+        let scale = min(contentView.bounds.width / cardView.size.width,
+                        contentView.bounds.height / cardView.size.height)
+        cardView.transform = CGAffineTransform(scaleX: scale, y: scale)
+    }
+
     @objc(configureWithHost:)
     func configure(with host: TemporaryHost) {
         if cardView == nil {
@@ -56,8 +64,8 @@ class HostCell: UICollectionViewCell {
             if let cardView, cardView.superview == nil {
                 contentView.addSubview(cardView)
                 NSLayoutConstraint.activate([
-                    cardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-                    cardView.topAnchor.constraint(equalTo: contentView.topAnchor),
+                    cardView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+                    cardView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
                 ])
             }
         }

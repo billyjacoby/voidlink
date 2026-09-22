@@ -7,41 +7,78 @@
 //
 
 
-// this is just a test code in swift, methods here not being called by anyone yet.
 import Foundation
 
 import UIKit
   
 @objc class OrientationHelper: NSObject {
-    @objc static func updateOrientationToLandscape() {
+    /// Navigation always rotates; the old orientation field now controls local
+    /// streaming only. Start that separate preference locked to landscape.
+    @objc static func configureStreamRotationDefault() {
 #if os(tvOS)
         return
 #else
+        let defaults = UserDefaults.standard
+        let migrationKey = "IndependentStreamRotationPreferenceV1"
+        guard !defaults.bool(forKey: migrationKey) else { return }
+        let dataManager = DataManager()
+        guard let settings = dataManager.retrieveSettings() else { return }
+        settings.unlockDisplayOrientation = false
+        dataManager.saveData()
+        defaults.set(true, forKey: migrationKey)
+#endif
+    }
+
+    @objc(allowedOrientationsFor:)
+    static func allowedOrientations(for controller: UIViewController) -> UIInterfaceOrientationMask {
+#if os(tvOS)
+        return .landscape
+#else
+        let window = controller.viewIfLoaded?.window ?? controller.presentingViewController?.viewIfLoaded?.window
+        if let root = window?.rootViewController as? SWRevealViewController {
+            return root.supportedInterfaceOrientations
+        }
+        // The widget picker can use a temporary overlay window in the same scene.
+        if #available(iOS 13.0, *), let scene = window?.windowScene,
+           let root = scene.windows.compactMap({ $0.rootViewController as? SWRevealViewController }).first {
+            return root.supportedInterfaceOrientations
+        }
+        return UIDevice.current.userInterfaceIdiom == .phone ? .allButUpsideDown : .all
+#endif
+    }
+
+    /// Reevaluate only the window containing the settings UI, never the external
+    /// video scene. A child controller invalidation alone doesn't update UIKit's
+    /// orientation policy on container and presented controllers.
+    @objc(updateSupportedOrientationsFrom:)
+    static func updateSupportedOrientations(from controller: UIViewController) {
+#if !os(tvOS)
+        guard let window = controller.viewIfLoaded?.window,
+              let root = window.rootViewController else { return }
         if #available(iOS 16.0, *) {
-            // 调用此方法会使视图控制器重新评估其支持的方向集。
-            UIApplication.shared.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-            
-            // 遍历并更新导航控制器的方向
-            if let navigationController = UIApplication.shared.keyWindow?.rootViewController as? UINavigationController {
-                navigationController.setNeedsUpdateOfSupportedInterfaceOrientations()
+            func invalidate(_ current: UIViewController) {
+                current.setNeedsUpdateOfSupportedInterfaceOrientations()
+                current.children.forEach(invalidate)
+                if let presented = current.presentedViewController { invalidate(presented) }
             }
-            
-            // 尝试更新窗口场景的几何形状为横屏
-            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                let geometryPreferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: .landscape)
-                scene.requestGeometryUpdate(geometryPreferences) { (receivedError: Error?) in
-                    if let error = receivedError {
-                        // 处理错误
-                        print("Error updating window scene geometry: \(error)")
-                    } else {
-                        // 没有错误，执行后续操作
-                        print("Window scene geometry updated successfully.")
-                    }
-                }
-            } else {
-                // 早于 iOS 16.0 的版本的回退逻辑
-                print("iOS version is less than 16.0, falling back to earlier behavior.")
+            invalidate(root)
+            guard let scene = window.windowScene,
+                  scene.session.role == .windowApplication else { return }
+            var allowed = root.supportedInterfaceOrientations
+            let preferred: UIInterfaceOrientationMask
+            switch UIDevice.current.orientation {
+            case .portrait: preferred = .portrait
+            case .portraitUpsideDown: preferred = .portraitUpsideDown
+            case .landscapeLeft: preferred = .landscapeRight
+            case .landscapeRight: preferred = .landscapeLeft
+            default: preferred = []
             }
+            if !allowed.intersection(preferred).isEmpty { allowed = preferred }
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: allowed)) { error in
+                NSLog("Orientation update deferred: %@", error.localizedDescription)
+            }
+        } else {
+            UIViewController.attemptRotationToDeviceOrientation()
         }
 #endif
     }

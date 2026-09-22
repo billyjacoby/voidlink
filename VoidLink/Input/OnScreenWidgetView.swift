@@ -200,6 +200,13 @@ import ObjectiveC.runtime
     @objc public var selfViewOnTheRight: Bool = false
     @objc public var shape: String = "default"
     @objc public var storedCenter: CGPoint = .zero // location from persisted data
+    // Presentation only: never copied into the profile's normalized layout.
+    private var portraitMenuFrame: CGRect?
+    @objc var usesPortraitMenuLayout: Bool { !OnScreenWidgetView.editMode && portraitMenuFrame != nil }
+    private var presentationCenter: CGPoint {
+        guard !OnScreenWidgetView.editMode, let frame = portraitMenuFrame else { return storedCenter }
+        return CGPoint(x: frame.midX, y: frame.midY)
+    }
     @objc public var initialCenter: CGPoint = .zero // location from persisted data
     @objc public var layoutChanges: [CGPoint] = []
     @objc public var mouseButtonAction: MouseButtonAction = .noClick;
@@ -210,8 +217,6 @@ import ObjectiveC.runtime
     @objc public var autoTapRepeats: UInt32 = 0;
     private var autoTapCount: UInt32 = 0;
     private var autoTapTimer: SafeTimer?
-    
-    private let appWindow: UIView
     
 #if !os(tvOS)
     private var vibrationGenerator = UIImpactFeedbackGenerator(style: .light)
@@ -530,7 +535,6 @@ import ObjectiveC.runtime
         self.offsetX = 0
         self.offsetY = 0
         self.onScreenControls = OnScreenControls()
-        self.appWindow = UIApplication.shared.windows.first!
         self.quickDoubleTapDetected = false
         self.touchTapTimeInterval = 100
         self.touchTapTimeStamp = 100
@@ -944,11 +948,17 @@ import ObjectiveC.runtime
     }
     
     // 仅在加载控件时调用
+    private var widgetViewportSize: CGSize {
+        let size = (superview ?? window)?.bounds.size ?? .zero
+        return CGSize(width: max(size.width, 1), height: max(size.height, 1))
+    }
+
     private func denormalizeSize(sizeFactor:CGFloat) -> CGFloat {
-        let longSideLen = max(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
-        let shortSideLen = min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+        let viewport = widgetViewportSize
+        let longSideLen = max(viewport.width, viewport.height)
+        let shortSideLen = min(viewport.width, viewport.height)
         
-        var referenceLen = UIScreen.main.bounds.width
+        var referenceLen = viewport.width
         if(self.sizeReference == WidgetSizeReference.longSide.rawValue) {referenceLen = longSideLen}
         if(self.sizeReference == WidgetSizeReference.shortSide.rawValue) {referenceLen = shortSideLen}
         
@@ -958,8 +968,9 @@ import ObjectiveC.runtime
     }
     
     private func getBaselineLenths(){
-        let longSideLen = max(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
-        let shortSideLen = min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+        let viewport = widgetViewportSize
+        let longSideLen = max(viewport.width, viewport.height)
+        let shortSideLen = min(viewport.width, viewport.height)
         
         baselineDiameter = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 60 : 60*shortSideLen/longSideLen
         
@@ -1017,9 +1028,10 @@ import ObjectiveC.runtime
         if self.shape == "square" {
             let widgetSize = getRecSize(widthFactor: self.widthFactor, heightFactor: self.heightFactor)
             autoDockOriginalBoundsSize = widgetSize
+            let displaySize = OnScreenWidgetView.editMode ? widgetSize : (portraitMenuFrame?.size ?? widgetSize)
             NSLayoutConstraint.activate([
-                self.widthAnchor.constraint(equalToConstant: widgetSize.width),
-                self.heightAnchor.constraint(equalToConstant: widgetSize.height),])
+                self.widthAnchor.constraint(equalToConstant: displaySize.width),
+                self.heightAnchor.constraint(equalToConstant: displaySize.height),])
             self.denormalizedWidthFactor = widgetSize.width/baselineWidth;
             self.denormalizedHeightFactor = widgetSize.height/baselineHeight;
         }
@@ -1338,7 +1350,7 @@ import ObjectiveC.runtime
         
         if(OnScreenWidgetView.editMode) {self.changeAndActivateContraints()}
         
-        center = storedCenter //anchor the center while resizing self
+        center = presentationCenter //anchor the center while resizing self
         
         hideAllHighlightLayersOfAllWidgets(selfIncluded: false)
         if widgetType == WidgetTypeEnum.button {setupButtonDownVisualEffectLayer()}
@@ -2459,6 +2471,13 @@ import ObjectiveC.runtime
     }
     
     private func moveByTouch(touch: UITouch){
+        // A runtime menu cell must not turn into a saved relocation on a drag.
+        if !OnScreenWidgetView.editMode, portraitMenuFrame != nil {
+            if !isAdjacentPoints(touch.location(in: superview), from: latestTouchLocation, tolerance: 6) {
+                firstTouchMoved = true
+            }
+            return
+        }
         let currentLocation: CGPoint
         if OnScreenWidgetView.editMode {
             // self.layer.borderColor = voidlinkPurple
@@ -3790,7 +3809,7 @@ import ObjectiveC.runtime
     private func autoDockRestoreOriginalSize() {
         guard autoDockOriginalBoundsSize != .zero else { return }
         var adjustedFrame = frame
-        adjustedFrame.size = autoDockOriginalBoundsSize
+        adjustedFrame.size = OnScreenWidgetView.editMode ? autoDockOriginalBoundsSize : (portraitMenuFrame?.size ?? autoDockOriginalBoundsSize)
         frame = adjustedFrame.integral
         if let hostView = superview {
             if autoDockDockedToBottomEdge {
@@ -3910,7 +3929,7 @@ import ObjectiveC.runtime
             restartAutoDockCountdown()
             return
         }
-        let restoreCenter = storedCenter
+        let restoreCenter = presentationCenter
         OnScreenWidgetView.deferSlideGestureDueToAutoDockRestore = true
         autoDockStopCountdown()
         autoDockStopSettledAlphaTimer()
@@ -3995,6 +4014,76 @@ import ObjectiveC.runtime
     }
     
     @objc static var enableFolderAnimation:Bool = true
+
+    /// Recompute after the overlay container's bounds/safe area change. The saved
+    /// centers continue to scale with the viewport and remain the landscape source.
+    @objc static func refreshPortraitMenuLayout() {
+        var frames: [Int16: CGRect] = [:]
+#if !os(tvOS)
+        if !editMode {
+            for folder in mapping.values where folder.oscProfile.name == "Default"
+                && folder.parentSequence == -1 && folder.cmdString == "LABELEDFOLDER"
+                && folder.widgetLabel == "=widgets" && folder.shape == "square" {
+                guard let host = folder.superview, host.bounds.height > host.bounds.width else { continue }
+                let area = host.bounds.inset(by: host.safeAreaInsets).insetBy(dx: 8, dy: 8)
+                guard area.width >= 44, area.height >= 44 else { continue }
+
+                let originalSize = folder.getRecSize(widthFactor: folder.widthFactor, heightFactor: folder.heightFactor)
+                let closedSize = CGSize(width: min(area.width, max(44, originalSize.width)),
+                                        height: min(area.height, max(44, originalSize.height)))
+                frames[folder.sequence] = CGRect(
+                    x: min(max(folder.storedCenter.x - closedSize.width / 2, area.minX), area.maxX - closedSize.width),
+                    y: min(max(folder.storedCenter.y - closedSize.height / 2, area.minY), area.maxY - closedSize.height),
+                    width: closedSize.width, height: closedSize.height)
+                guard !folder.folded else { continue }
+
+                // Only the built-in launcher menu is reflowed. Its descendants
+                // include spatial keyboards/gamepads which have their own layouts.
+                let children = mapping.values.filter {
+                    $0.parentSequence == folder.sequence && folder.sequenceSet.contains($0.sequence)
+                }.sorted {
+                    func group(_ widget: OnScreenWidgetView) -> Int {
+                        widget.isFolder ? 0 : (widget.containsShortcutAction ? 2 : 1)
+                    }
+                    let lhs = group($0), rhs = group($1)
+                    return lhs == rhs ? $0.sequence < $1.sequence : lhs < rhs
+                }
+                guard !children.isEmpty, children.allSatisfy({ $0.widgetType == .button && $0.shape == "square" }) else { continue }
+
+                let gap: CGFloat = 6
+                let count = children.count + 1 // Keep the close/folder button in its own cell.
+                let maxRows = max(1, Int((area.height + gap) / (44 + gap)))
+                let maxColumns = max(1, Int((area.width + gap) / (44 + gap)))
+                let preferredColumns = max(1, Int((area.width + gap) / (96 + gap)))
+                let columns = min(maxColumns, max(preferredColumns, (count + maxRows - 1) / maxRows))
+                let rows = (count + columns - 1) / columns
+                guard rows <= maxRows else { continue }
+                let cellWidth = (area.width - CGFloat(columns - 1) * gap) / CGFloat(columns)
+                let cellHeight = min(52, (area.height - CGFloat(rows - 1) * gap) / CGFloat(rows))
+                let top = area.maxY - CGFloat(rows) * cellHeight - CGFloat(rows - 1) * gap
+                for (index, widget) in (children + [folder]).enumerated() {
+                    // Anchor the folder at bottom right, including an incomplete final row.
+                    let cell = widget === folder ? rows * columns - 1 : index
+                    frames[widget.sequence] = CGRect(
+                        x: area.minX + CGFloat(cell % columns) * (cellWidth + gap),
+                        y: top + CGFloat(cell / columns) * (cellHeight + gap),
+                        width: cellWidth, height: cellHeight)
+                }
+            }
+        }
+#endif
+        for widget in mapping.values {
+            let newFrame = frames[widget.sequence]
+            let changed = widget.portraitMenuFrame != newFrame
+            widget.portraitMenuFrame = newFrame
+            if changed && !widget.autoDockIsDocked {
+                widget.resizeWidgetView()
+            } else if newFrame != nil && !widget.isHidden && !widget.autoDockIsDocked {
+                widget.center = widget.presentationCenter
+            }
+        }
+    }
+
     private static func setCollection(folded:Bool, for folder:OnScreenWidgetView, exception:OnScreenWidgetView? = nil, recursive:Bool = false, isExclusiveFolderAction:Bool = false) {
         guard folder.isFolder else {return}
         
@@ -4008,6 +4097,7 @@ import ObjectiveC.runtime
         
         // guard folder.folded != hidden else { return }
         folder.folded = folded
+        refreshPortraitMenuLayout()
         folder.setupAtrributedText()
         folder.reverseColorPhase(reversed: !folder.folded)
         
@@ -4031,7 +4121,7 @@ import ObjectiveC.runtime
                         widget.center = folder.center
                     },completion: { finished in
                         widget.isUserInteractionEnabled = !folded
-                        widget.center = folder.folded ? folder.storedCenter : widget.storedCenter
+                        widget.center = folder.folded ? folder.presentationCenter : widget.presentationCenter
                         widget.isHidden = folder.folded
                         if (widget.widgetType == .touchPad
                             || abs(widget.backgroundAlpha) < 0.1
@@ -4048,7 +4138,7 @@ import ObjectiveC.runtime
                 DispatchQueue.main.async {
                     widget.isUserInteractionEnabled = false
                     widget.capturedTouches.removeAllObjects()
-                    widget.center = folder.storedCenter
+                    widget.center = folder.presentationCenter
                     widget.isHidden = false
                     widget.setupCmdLabel()
                     if (widget.widgetType == .touchPad
@@ -4060,11 +4150,11 @@ import ObjectiveC.runtime
                                    ? (folder.buttonMode == .slideAndHold ? 0.05 : widget.standardFoldingInterval)
                                    : 0
                                    , animations: {
-                        widget.center = widget.storedCenter
+                        widget.center = widget.presentationCenter
                     },completion: { finished in
                         widget.capturedTouches.removeAllObjects()
                         widget.isUserInteractionEnabled = !folder.folded
-                        widget.center = folder.folded ? folder.storedCenter : widget.storedCenter
+                        widget.center = folder.folded ? folder.presentationCenter : widget.presentationCenter
                         widget.isHidden = folder.folded
                         if (widget.widgetType == .touchPad
                             || abs(widget.backgroundAlpha) < 0.1

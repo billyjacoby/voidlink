@@ -39,6 +39,10 @@ public final class WidgetPickerViewController: UIViewController {
     private let presentationState = WidgetPickerPresentationState()
     private var hostingViewController: UIHostingController<WidgetPickerView>?
 
+    public override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        OrientationHelper.allowedOrientations(for: self)
+    }
+
     public override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -74,12 +78,8 @@ public final class WidgetPickerViewController: UIViewController {
         view.addSubview(hostingViewController.view)
         hostingViewController.didMove(toParent: self)
 
-        let hostingTopAnchor = UIDevice.current.userInterfaceIdiom == .phone
-            ? view.safeAreaLayoutGuide.topAnchor
-            : view.topAnchor
-
         NSLayoutConstraint.activate([
-            hostingViewController.view.topAnchor.constraint(equalTo: hostingTopAnchor),
+            hostingViewController.view.topAnchor.constraint(equalTo: UIDevice.current.userInterfaceIdiom == .phone ? view.safeAreaLayoutGuide.topAnchor : view.topAnchor),
             hostingViewController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             hostingViewController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             hostingViewController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -145,7 +145,7 @@ public final class WidgetPickerViewController: UIViewController {
         overlayHostViewController.view.backgroundColor = .clear
 
         let overlayWindow = UIWindow(windowScene: windowScene)
-        overlayWindow.frame = windowScene.screen.bounds
+        overlayWindow.frame = windowScene.coordinateSpace.bounds
         overlayWindow.windowLevel = .alert + 1
         overlayWindow.backgroundColor = .clear
         overlayWindow.rootViewController = overlayHostViewController

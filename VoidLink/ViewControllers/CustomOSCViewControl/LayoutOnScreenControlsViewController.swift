@@ -211,18 +211,7 @@ final class LayoutOnScreenControlsViewController: UIViewController, OnScreenWidg
     private var hasSavedSinceLastWidgetReload = false
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        let dataMan = DataManager()
-        let currentSettings = dataMan.retrieveSettings()
-        if currentSettings?.unlockDisplayOrientation == true {
-            return .all
-        } else {
-            return PublicUtils.isIPhone ? .landscape : getCurrentOrientation()
-        }
-    }
-
-    private func getCurrentOrientation() -> UIInterfaceOrientationMask {
-        let bounds = UIScreen.main.bounds
-        return bounds.width > bounds.height ? .landscape : [.portrait, .portraitUpsideDown]
+        OrientationHelper.allowedOrientations(for: self)
     }
 
     override func viewDidLoad() {
@@ -682,38 +671,46 @@ final class LayoutOnScreenControlsViewController: UIViewController, OnScreenWidg
         if self.profileSelectorLoadingMode == .selectProfileFromLayoutTool {
             
             let oldSize = view.bounds.size
-            let scaleX = size.width / oldSize.width
-            let scaleY = size.height / oldSize.height
-            
-            for widget in OnScreenWidgetView.mapping.values {
-                let oldCenter = widget.center
-                let oldStoredCenter = widget.storedCenter
-                
-                coordinator.animate(alongsideTransition: { _ in
-                    widget.center = CGPoint(
-                        x: oldCenter.x * scaleX,
-                        y: oldCenter.y * scaleY
-                    )
-                    widget.storedCenter = CGPoint(
-                        x: oldStoredCenter.x * scaleX,
-                        y: oldStoredCenter.y * scaleY
-                    )
-                }, completion: nil)
-            }
-            
-            for buttonLayer in self.layoutOSC.oscButtonLayerPool {
-                if let layer = buttonLayer as? CALayer {
-                    let oldPosition = layer.position
+            if oldSize.width > 0, oldSize.height > 0 {
+                let scaleX = size.width / oldSize.width
+                let scaleY = size.height / oldSize.height
+
+                for widget in OnScreenWidgetView.mapping.values {
+                    let oldCenter = widget.center
+                    let oldStoredCenter = widget.storedCenter
+
                     coordinator.animate(alongsideTransition: { _ in
-                        if layer == self.layoutOSC._leftStick
-                           || layer == self.layoutOSC._rightStick {return}
-                        layer.position = CGPoint(
-                            x: oldPosition.x * scaleX,
-                            y: oldPosition.y * scaleY
+                        widget.center = CGPoint(
+                            x: oldCenter.x * scaleX,
+                            y: oldCenter.y * scaleY
+                        )
+                        widget.storedCenter = CGPoint(
+                            x: oldStoredCenter.x * scaleX,
+                            y: oldStoredCenter.y * scaleY
                         )
                     }, completion: nil)
                 }
+
+                for buttonLayer in self.layoutOSC.oscButtonLayerPool {
+                    if let layer = buttonLayer as? CALayer {
+                        let oldPosition = layer.position
+                        coordinator.animate(alongsideTransition: { _ in
+                            if layer == self.layoutOSC._leftStick
+                               || layer == self.layoutOSC._rightStick { return }
+                            layer.position = CGPoint(
+                                x: oldPosition.x * scaleX,
+                                y: oldPosition.y * scaleY
+                            )
+                        }, completion: nil)
+                    }
+                }
             }
+        }
+
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            guard let self else { return }
+            self.setupWidgetPanel()
+            self.updateViewBounds()
         }
     }
 

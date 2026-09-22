@@ -349,17 +349,8 @@ final class ProfileSelectorViewController: UIViewController, UICollectionViewDat
     }
 
 #if !os(tvOS)
-    private func getCurrentOrientation() -> UIInterfaceOrientationMask {
-        let bounds = UIScreen.main.bounds
-        if bounds.width > bounds.height {
-            return .landscape
-        } else {
-            return [.portrait, .portraitUpsideDown]
-        }
-    }
-
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        getCurrentOrientation()
+        OrientationHelper.allowedOrientations(for: self)
     }
 #endif
 

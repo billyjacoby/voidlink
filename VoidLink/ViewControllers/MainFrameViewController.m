@@ -44,6 +44,41 @@
 
 #include <Limelight.h>
 
+// Artwork views keep their own intrinsic card layout; fit them again whenever
+// UICollectionView changes a reused cell's bounds during rotation.
+@interface VLAppCollectionViewCell : UICollectionViewCell
+@property (nonatomic, strong) UIAppView *appView;
+@end
+
+@implementation VLAppCollectionViewCell
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) self.clipsToBounds = YES;
+    return self;
+}
+- (void)setAppView:(UIAppView *)appView {
+    [_appView removeFromSuperview];
+    _appView = appView;
+    if (appView) [self.contentView addSubview:appView];
+    [self setNeedsLayout];
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGSize naturalSize = _appView.bounds.size;
+    if (naturalSize.width <= 0 || naturalSize.height <= 0) return;
+    CGFloat scale = MIN(CGRectGetWidth(self.contentView.bounds) / naturalSize.width,
+                        CGRectGetHeight(self.contentView.bounds) / naturalSize.height);
+    _appView.transform = CGAffineTransformMakeScale(scale, scale);
+    _appView.center = CGPointMake(CGRectGetMidX(self.contentView.bounds), CGRectGetMidY(self.contentView.bounds));
+}
+
+- (void)prepareForReuse {
+    [super prepareForReuse];
+    self.appView = nil;
+}
+@end
+
 
 @interface MainFrameViewController() <AppCallback, HostCardActionDelegate, AppViewUpdateLoopDelegate, ControllerNavigatorRadialMenuDelegate, ControllerUtilDelegate>
 #if TARGET_OS_TV
@@ -843,6 +878,7 @@ static NSMutableSet* hostList;
     launchedApp = app;
     [self updateResolutionAccordingly];
     self.revealViewController.isStreaming = true; // tell the revealViewController streaming is started.
+    [OrientationHelper updateSupportedOrientationsFrom:self];
     _streamConfig = [[StreamConfiguration alloc] init];
     _streamConfig.host = app.host.activeAddress;
     _streamConfig.httpsPort = app.host.httpsPort;
@@ -873,6 +909,17 @@ static NSMutableSet* hostList;
     
     _streamConfig.height = streamSettings.height.intValue;
     _streamConfig.width = streamSettings.width.intValue;
+
+    // Older builds saved portrait-flipped preset dimensions when Settings was
+    // opened upright. Restore the preset's orientation, never a custom size.
+    NSInteger resolution = streamSettings.resolutionSelected.integerValue;
+    BOOL landscapeNative = (resolution == 3 || resolution == 4) && !streamSettings.unlockDisplayOrientation &&
+        !(streamSettings.externalDisplayMode.intValue == 1 && UIScreen.screens.count > 1);
+    if ((resolution >= 0 && resolution <= 2) || landscapeNative) {
+        int width = MAX(_streamConfig.width, _streamConfig.height);
+        _streamConfig.height = MIN(_streamConfig.width, _streamConfig.height);
+        _streamConfig.width = width;
+    }
     
     NSLog(@"saveSettings.width %d, %d", _streamConfig.width, _streamConfig.height);
 #if TARGET_OS_TV
@@ -1336,13 +1383,9 @@ static NSMutableSet* hostList;
 
 #endif
 
-// currently obselete:
 - (void) setNeedsUpdateAllowedOrientation{
-    if (@available(iOS 16.0, *)) {
-        [self setNeedsUpdateOfSupportedInterfaceOrientations];
-    } else {
-        // Fallback on earlier versions
-    }
+    UIViewController *visibleController = streamFrameViewController.viewIfLoaded.window ? streamFrameViewController : self;
+    [OrientationHelper updateSupportedOrientationsFrom:visibleController];
 }
 
 - (void)revealController:(SWRevealViewController *)revealController willMoveToPosition:(FrontViewPosition)position {
@@ -1527,9 +1570,8 @@ static NSMutableSet* hostList;
 
 - (void)adjustScrollViewForSafeArea:(UIScrollView*)view {
     if (@available(iOS 11.0, *)) {
-        if (self.view.safeAreaInsets.left >= 20 || self.view.safeAreaInsets.right >= 20) {
-            view.contentInset = UIEdgeInsetsMake(0, 20, 0, 20);
-        }
+        BOOL needsHorizontalPadding = self.view.safeAreaInsets.left >= 20 || self.view.safeAreaInsets.right >= 20;
+        view.contentInset = needsHorizontalPadding ? UIEdgeInsetsMake(0, 20, 0, 20) : UIEdgeInsetsZero;
     }
 }
 
@@ -1981,7 +2023,7 @@ static NSMutableSet* hostList;
 
 - (void)updateAppCollectionTheme {
     for (UICollectionViewCell *cell in self.collectionView.visibleCells) {
-        for (UIView *view in cell.subviews) {
+        for (UIView *view in cell.contentView.subviews) {
             if ([view isKindOfClass:[UIAppView class]]) {
                 [(UIAppView *)view updateTheme];
             }
@@ -2062,6 +2104,7 @@ static NSMutableSet* hostList;
 
 - (void)viewDidLoad{
     [super viewDidLoad];
+    [self.collectionView registerClass:VLAppCollectionViewCell.class forCellWithReuseIdentifier:@"AppCell"];
     
     DataManager* dataMan = [[DataManager alloc] init];
     TemporarySettings* tempSettings = [dataMan getSettings];
@@ -2215,8 +2258,23 @@ static NSMutableSet* hostList;
 
 -(void)viewDidLayoutSubviews{
     [super viewDidLayoutSubviews];
+    CGSize hostCardSize = [self getHostCardSize];
+    if (self.hostCollectionVC && !CGSizeEqualToSize(self.hostCollectionVC.cellSize, hostCardSize)) {
+        self.hostCollectionVC.cellSize = hostCardSize;
+        [self.hostCollectionVC.collectionView.collectionViewLayout invalidateLayout];
+    }
     [self updateHosts];
     // if (@available(iOS 13.0, *)) [GamepadNavigationIllustrationHud showInKeyWindow];
+}
+
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        [self.collectionView.collectionViewLayout invalidateLayout];
+    } completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        [self.collectionView.collectionViewLayout invalidateLayout];
+        [self.collectionView layoutIfNeeded];
+    }];
 }
 
 // this will also be called back when device orientation changes
@@ -2248,22 +2306,23 @@ static NSMutableSet* hostList;
         appWindowHeight = bounds.size.height * screenScale;
     }
     
-    bool needSwapWidthAndHeight = appWindowWidth < appWindowHeight;
-    
     resolutionTable[0] = (CMVideoDimensions){ .width = 1280, .height = 720 };
     resolutionTable[1] = (CMVideoDimensions){ .width = 1920, .height = 1080 };
     resolutionTable[2] = (CMVideoDimensions){ .width = 3840, .height = 2160 };
     
-    for(uint8_t i=0;i<6;i++){
-        int32_t longSideLen = MAX(resolutionTable[i].width, resolutionTable[i].height);
-        int32_t shortSideLen = MIN(resolutionTable[i].width, resolutionTable[i].height);
-        if(needSwapWidthAndHeight) resolutionTable[i] = (CMVideoDimensions){ .width = shortSideLen, .height = longSideLen };
-        else resolutionTable[i] = (CMVideoDimensions){ .width = longSideLen, .height = shortSideLen };
-    }
-
     // add app window resolution and not swap width and height
     resolutionTable[3] = (CMVideoDimensions){ .width = (int32_t)safeAreaWidth, .height = (int32_t)appWindowHeight };
     resolutionTable[4] = (CMVideoDimensions){ .width = (int32_t)appWindowWidth, .height = (int32_t)appWindowHeight };
+    BOOL externalScreen = externalDisplayMode == 1 && UIScreen.screens.count > 1;
+    if (externalScreen) resolutionTable[3] = resolutionTable[4];
+    Settings *settings = [[[DataManager alloc] init] retrieveSettings];
+    if (!externalScreen && !settings.unlockDisplayOrientation) {
+        for (NSInteger index = 3; index <= 4; index++) {
+            int32_t width = MAX(resolutionTable[index].width, resolutionTable[index].height);
+            resolutionTable[index].height = MIN(resolutionTable[index].width, resolutionTable[index].height);
+            resolutionTable[index].width = width;
+        }
+    }
 }
 
 -(void) updateResolutionAccordingly {
@@ -2402,6 +2461,8 @@ static NSMutableSet* hostList;
     
     [[self revealViewController] setPrimaryViewController:self];
     self.revealViewController.isStreaming = false; // tell the revealViewController streaming is finished
+    self.revealViewController.externalDisplayActive = NO;
+    [OrientationHelper updateSupportedOrientationsFrom:self];
     //[self.settingsButton setEnabled:![self isIPhonePortrait]]; //make sure settings button is disabled in iphone portrait mode.
     //recordedScreenWidth = CGRectGetWidth([[UIScreen mainScreen] bounds]); // Get the screen's bounds (in points), update recorded screen width
 // #endif
@@ -2687,20 +2748,13 @@ static NSMutableSet* hostList;
 }
 
 - (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
-    UICollectionViewCell* cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"AppCell" forIndexPath:indexPath];
+    VLAppCollectionViewCell* cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"AppCell" forIndexPath:indexPath];
     
     TemporaryApp* app = self.sortedAppList[indexPath.row];
     UIAppView* appView = [[UIAppView alloc] initWithApp:app cache:_boxArtCache andCallback:self];
     appView.updateLoopDelegate = (id<AppViewUpdateLoopDelegate>)self;
     
-    if (appView.bounds.size.width > 10.0) {
-        CGFloat scale = cell.bounds.size.width / appView.bounds.size.width;
-        [appView setCenter:CGPointMake(appView.bounds.size.width / 2 * scale, appView.bounds.size.height / 2 * scale)];
-        appView.transform = CGAffineTransformMakeScale(scale, scale); // view resize
-    }
-    
-    [cell.subviews.firstObject removeFromSuperview]; // Remove a view that was previously added
-    [cell addSubview:appView];
+    cell.appView = appView;
     // [self.settingsButton setEnabled:![self isIPhonePortrait]]; // update settings button after host is clicked & appview loaded
     // Shadow opacity is controlled inside UIAppView based on whether the app
     // is hidden or not during the update cycle.
@@ -2723,8 +2777,8 @@ static NSMutableSet* hostList;
                   layout:(UICollectionViewLayout *)collectionViewLayout
   sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
     CGSize cellSize;
-    if(PublicUtils.isIPhone) cellSize.height = 0.365*MIN(CGRectGetHeight([[UIScreen mainScreen] bounds]),CGRectGetWidth([[UIScreen mainScreen] bounds]));
-    else cellSize.height = 0.272*MIN(CGRectGetHeight([[UIScreen mainScreen] bounds]),CGRectGetWidth([[UIScreen mainScreen] bounds]));
+    CGFloat referenceLength = MIN(CGRectGetHeight(self.view.bounds), CGRectGetWidth(self.view.bounds));
+    cellSize.height = (PublicUtils.isIPhone ? 0.365 : 0.272) * referenceLength;
     TemporaryApp* app = self.sortedAppList[indexPath.row];
     UIAppView* appView = [[UIAppView alloc] initWithApp:app cache:_boxArtCache andCallback:self];
 
@@ -2777,8 +2831,8 @@ static NSMutableSet* hostList;
 - (void)handleMenuResize:(UILongPressGestureRecognizer *)gesture {
     CGPoint locationInView = [gesture locationInView:self.view];
     CGPoint locationInSuperView = [gesture locationInView:self.revealViewController.view];
-    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
-    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+    CGFloat screenHeight = self.revealViewController.view.bounds.size.height;
+    CGFloat screenWidth = self.revealViewController.view.bounds.size.width;
 
     menuSeparator = [self findMenuSeparator];
     if(menuSeparator.hidden || menuSeparator == nil) return;
@@ -2787,7 +2841,7 @@ static NSMutableSet* hostList;
         if(locationInView.x < 30) {
             snapshot = [[UIView alloc] init];
             snapshot.backgroundColor = [UIColor systemBlueColor];
-            screenHeight = [UIScreen mainScreen].bounds.size.height;
+            screenHeight = self.revealViewController.view.bounds.size.height;
             snapshot.frame = CGRectMake(locationInSuperView.x,0, 2, screenHeight);
             [self.revealViewController.view addSubview:snapshot];
         }
@@ -2913,8 +2967,8 @@ static NSMutableSet* hostList;
 
 - (CGSize)getHostCardSize{
     CGSize cardSize;
-    if(PublicUtils.isIPhone) cardSize.height = 0.37*MIN(CGRectGetHeight([[UIScreen mainScreen] bounds]),CGRectGetWidth([[UIScreen mainScreen] bounds]));
-    else cardSize.height = 0.25*MIN(CGRectGetHeight([[UIScreen mainScreen] bounds]),CGRectGetWidth([[UIScreen mainScreen] bounds]));
+    CGFloat referenceLength = MIN(CGRectGetHeight(self.view.bounds), CGRectGetWidth(self.view.bounds));
+    cardSize.height = (PublicUtils.isIPhone ? 0.37 : 0.25) * referenceLength;
     TemporaryHost* dummyHost = [[TemporaryHost alloc] init];
     HostCardView* dummyCard = [[HostCardView alloc] initWithHost:dummyHost];
     cardSize.width = cardSize.height * (dummyCard.size.width/dummyCard.size.height);

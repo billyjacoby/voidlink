@@ -68,6 +68,7 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
 */
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    [OrientationHelper configureStreamRotationDefault];
     // Override point for command tool customization after application launch (works only when user default is nil)
     [CommandManager presetDefaultCommands];
     [GenericUtils installSegmentedControlPreviousSelectionTracking];

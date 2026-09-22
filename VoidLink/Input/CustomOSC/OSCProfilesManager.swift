@@ -589,10 +589,10 @@ class OSCProfilesManager: NSObject {
         return buttonStatesEncoded
     }
 
-    private func getReferenceLen() -> CGFloat {
-        let screenBounds = UIScreen.main.bounds
-        let screenWidthInPoints = screenBounds.width
-        let screenHeightInPoints = screenBounds.height
+    private func getReferenceLen(for widget: OnScreenWidgetView) -> CGFloat {
+        let layoutBounds = widget.superview?.bounds ?? Self.layoutViewBounds
+        let screenWidthInPoints = max(layoutBounds.width, 1)
+        let screenHeightInPoints = max(layoutBounds.height, 1)
         let longSideLen = max(screenWidthInPoints, screenHeightInPoints)
 
         if widgetSizeTransition == .transitionWithOrientation {
@@ -602,16 +602,16 @@ class OSCProfilesManager: NSObject {
     }
 
     private func normalizeSizeWidthFactor(with widget: OnScreenWidgetView) -> CGFloat {
-        widget.bounds.size.width / getReferenceLen() * 10000
+        widget.usesPortraitMenuLayout ? widget.widthFactor : widget.bounds.size.width / getReferenceLen(for: widget) * 10000
     }
 
     private func normalizeSizeHeightFactor(with widget: OnScreenWidgetView) -> CGFloat {
-        widget.bounds.size.height / getReferenceLen() * 10000
+        widget.usesPortraitMenuLayout ? widget.heightFactor : widget.bounds.size.height / getReferenceLen(for: widget) * 10000
     }
 
     private func normalizeComponentSizeFactor(with widget: OnScreenWidgetView) -> CGFloat {
         if widget.isStickWheel || widget.isDisplacementBasedStickPad {
-            return widget.denormalizedComponentSizeFactor * widget.baselineDiameter / getReferenceLen() * 10000
+            return widget.denormalizedComponentSizeFactor * widget.baselineDiameter / getReferenceLen(for: widget) * 10000
         }
         return 1
     }
