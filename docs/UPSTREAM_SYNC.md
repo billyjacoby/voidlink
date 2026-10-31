@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-- Last deployed release: `c8507e85` (targeted Duo, audio, resolution and widget fixes).
+- Last deployed code: `cae13c59` (targeted fixes plus encoder-safe native resolution).
 - Reconciliation branch: `integrate/upstream-2026-10-31`.
 - Upstream target: `fa428059` on `upstream/Integration`.
 - Code reconciliation merge: `078be62a` (parents `c8507e85` and `fa428059`).
@@ -35,8 +35,20 @@ old store as an explicit pinch-disabled selection. Both final builds, migration
 checks and the smoke replay passed after these fixes; the bounded review recheck
 reported no remaining concrete issue in those areas.
 
-The installed Duo release is still `c8507e85`; do not install/promote the candidate
+The installed Duo code is `cae13c59`; do not install/promote the candidate
 as a verified replacement until those acceptance gaps are addressed.
+
+### Native-resolution hotfix acceptance (2026-10-31)
+
+On the deployed targeted-fix build, 1080p started successfully but FullScr/Window
+failed with the same H.264/HDR-off settings. The capture showed successful
+handshake/audio followed by `-100` (no video traffic), with native size 2669×1878.
+`cae13c59` aligns only measured native presets to even pixels (2668×1878 here),
+leaves custom dimensions unchanged, and preserves the actual error in the dialog
+instead of claiming an external probe proves the local network is blocked.
+The user confirmed native H.264/HDR-off streaming works after the in-place update.
+Ten standalone alignment cases pass. Other codecs, HDR and the complete
+reconciliation candidate are **not** covered by this confirmation.
 
 ## Branch and merge policy
 
@@ -133,6 +145,8 @@ swift BuildScripts/check-settings-migration.swift /path/to/VoidLink.app/Limeligh
 swift BuildScripts/check-settings-migration.swift /path/to/VoidLink.app/Limelight.momd 1.0 pinch-off
 swift BuildScripts/check-settings-migration.swift /path/to/VoidLink.app/Limelight.momd 1.1 pinch-off
 swift BuildScripts/check-settings-migration.swift /path/to/VoidLink.app/Limelight.momd 1.2
+swiftc VoidLink/Utility/NativeStreamResolution.swift BuildScripts/check-native-resolution.swift -o /path/to/check-native-resolution
+/path/to/check-native-resolution
 ```
 
 If Xcode reports a missing Metal toolchain, install it with
@@ -190,6 +204,10 @@ Verify this invariant matrix:
 - View Zoom/cursor-follow is available only for the standard renderer, not Metal
   or the external trackpad surface. Persisted unsupported selections must also be
   gated at runtime, not just hidden from the Settings picker.
+- Native display/window sizes must use `NativeStreamResolution.alignedSize` in
+  both Settings and launch configuration. Odd pixel dimensions can complete the
+  handshake yet leave the host sending no video. Keep explicit custom sizes exact;
+  an internet connectivity probe must not mask the actual termination reason.
 
 Keep old Core Data versions immutable. Candidate version 1.3 inherits
 `audioBufferLimitMs` and adds upstream's `floatingKeyboardButton`,
