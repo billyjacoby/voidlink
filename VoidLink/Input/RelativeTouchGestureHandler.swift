@@ -13,7 +13,7 @@ import UIKit
     private static weak var zoomViewportUsedInStreamView: StreamView?
 
     static func hasUsedZoomViewport(in streamView: StreamView?) -> Bool {
-        guard let streamView else { return false }
+        guard let streamView, streamView.viewportZoomSupported else { return false }
         return zoomViewportUsedInStreamView === streamView
     }
 
@@ -267,7 +267,7 @@ import UIKit
 
     private var canZoomViewport: Bool {
         touchMode == .relative && pinchGestureMode == .zoomViewport &&
-            streamView != nil && streamView?.relativeTouchCoordinateView == nil
+            streamView?.viewportZoomSupported == true
     }
 
     /// Keep the keyboard-covered area clear without adding safe-area insets.

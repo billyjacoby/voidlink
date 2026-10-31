@@ -1,4 +1,4 @@
-// Run: swift BuildScripts/check-settings-migration.swift /path/to/Limelight.momd [1.0|1.1]
+// Run: swift BuildScripts/check-settings-migration.swift /path/to/Limelight.momd [1.0|1.1|1.2] [pinch-on|pinch-off]
 // Uses a disposable store, never the app's installed database.
 import CoreData
 import Foundation
@@ -7,18 +7,20 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
     precondition(condition(), message)
 }
 
-guard (2...3).contains(CommandLine.arguments.count) else {
+guard (2...4).contains(CommandLine.arguments.count) else {
     fatalError("Pass the compiled Limelight.momd directory and optional source version")
 }
 let bundle = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
-let sourceVersion = CommandLine.arguments.count == 3 ? CommandLine.arguments[2] : "1.0"
-require(["1.0", "1.1"].contains(sourceVersion), "Use a shipped source model: 1.0 or 1.1")
+let sourceVersion = CommandLine.arguments.count >= 3 ? CommandLine.arguments[2] : "1.0"
+require(["1.0", "1.1", "1.2"].contains(sourceVersion), "Use an existing source model: 1.0, 1.1 or 1.2")
+let legacyPinchEnabled = CommandLine.arguments.count < 4 || CommandLine.arguments[3] == "pinch-on"
 guard let original = NSManagedObjectModel(contentsOf: bundle.appendingPathComponent("VoidLink v\(sourceVersion).mom")),
       let current = NSManagedObjectModel(contentsOf: bundle) else {
     fatalError("Could not load original and current models")
 }
 let hasAudioSetting = original.entitiesByName["Settings"]?.attributesByName["audioBufferLimitMs"] != nil
-require(hasAudioSetting == (sourceVersion == "1.1"), "Shipped source schemas must remain unchanged")
+require(hasAudioSetting == (sourceVersion != "1.0"), "Source schemas must remain unchanged")
+let hasGestureMode = original.entitiesByName["Settings"]?.attributesByName["trackpadGestureMode"] != nil
 require(current.entitiesByName["Settings"]?.attributesByName["audioBufferLimitMs"] != nil,
         "The current model must include the audio setting")
 
@@ -40,7 +42,10 @@ func makeOriginalStore() throws {
     settings.setValue(1440, forKey: "height")
     settings.setValue(5, forKey: "resolutionSelected")
     settings.setValue(true, forKey: "unlockDisplayOrientation")
+    settings.setValue(legacyPinchEnabled, forKey: "enablePinch")
     if hasAudioSetting { settings.setValue(144, forKey: "audioBufferLimitMs") }
+    // Explicit disabled is distinct from a legacy store with no new selection.
+    if hasGestureMode { settings.setValue(0, forKey: "trackpadGestureMode") }
     let host = NSManagedObject(entity: original.entitiesByName["Host"]!, insertInto: context)
     host.setValue("Saved host", forKey: "name")
     host.setValue("saved-host-uuid", forKey: "uuid")
@@ -74,6 +79,13 @@ require((settings[0].value(forKey: "resolutionSelected") as? NSNumber)?.intValue
         "Custom preset selection must survive")
 require((settings[0].value(forKey: "unlockDisplayOrientation") as? NSNumber)?.boolValue == true,
         "Portrait preference must survive")
+require((settings[0].value(forKey: "enablePinch") as? NSNumber)?.boolValue == legacyPinchEnabled,
+        "Legacy enabled/disabled pinch preference must survive")
+if current.entitiesByName["Settings"]?.attributesByName["trackpadGestureMode"] != nil {
+    let rawMode = (settings[0].value(forKey: "trackpadGestureMode") as? NSNumber)?.intValue
+    require(rawMode == (hasGestureMode ? 0 : -1),
+            "Legacy stores must receive the unset sentinel; explicit disabled must remain disabled")
+}
 let apps = try context.fetch(NSFetchRequest<NSManagedObject>(entityName: "App"))
 require(apps.count == 1, "Saved app must survive")
 require((apps[0].value(forKey: "hidden") as? NSNumber)?.boolValue == true,
@@ -82,4 +94,4 @@ let host = apps[0].value(forKey: "host") as? NSManagedObject
 require(host?.value(forKey: "uuid") as? String == "saved-host-uuid",
         "Host/app relationship must survive")
 try coordinator.remove(store)
-print("PASS: v\(sourceVersion) → current migration preserves settings, host, app, and hidden state")
+print("PASS: v\(sourceVersion) → current preserves settings, hosts/apps, hidden state and pinch=\(legacyPinchEnabled)")

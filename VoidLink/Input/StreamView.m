@@ -351,6 +351,15 @@ static NSString * const KeyboardInputSentinel = @"\u200B";
     return NO;
 #else
     return touchMode == TouchModeRelative && settings.trackpadGestureMode.integerValue == TrackpadGestureModeZoomViewport
+        && self.viewportZoomSupported;
+#endif
+}
+
+- (BOOL)viewportZoomSupported {
+#if TARGET_OS_TV
+    return NO;
+#else
+    return settings.renderingBackend.intValue != RENDER_METAL
         && self.relativeTouchCoordinateView == nil
         && [self.superview isKindOfClass:[UIScrollView class]];
 #endif

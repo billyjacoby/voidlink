@@ -207,7 +207,15 @@ class TemporarySettings: NSObject {
         pointerVelocityModeDivider = settings.pointerVelocityModeDivider
         touchPointerVelocityFactor = settings.touchPointerVelocityFactor
         passthroughGestures = settings.passthroughGestures
-        trackpadGestureMode = settings.trackpadGestureMode
+        // -1 means this store has never selected the new gesture mode. Preserve
+        // legacy pinch/Ctrl+scroll until an explicit mode is saved; 0 remains a
+        // deliberate disabled selection and must never be migrated again.
+        if let savedMode = settings.trackpadGestureMode, savedMode.intValue >= 0 {
+            trackpadGestureMode = savedMode
+        } else {
+            trackpadGestureMode = NSNumber(value: settings.enablePinch
+                ? TrackpadGestureMode.ctrlAndScroll.rawValue : TrackpadGestureMode.pinchDisabled.rawValue)
+        }
         ctrlDownForPinch = settings.ctrlDownForPinch
         scrollSensitivity = settings.scrollSensitivity
         pinchSensitivity = settings.pinchSensitivity

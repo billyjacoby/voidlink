@@ -354,7 +354,7 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
         latestMousePointerLocation = currentLocation;
         firstTouchMoved = true;
     }
-    BOOL zoomViewport = streamView.relativeTouchCoordinateView == nil &&
+    BOOL zoomViewport = streamView.viewportZoomSupported &&
         currentSettings.trackpadGestureMode.intValue == TrackpadGestureModeZoomViewport;
     CGFloat velocityFactor;
     if (zoomViewport) {

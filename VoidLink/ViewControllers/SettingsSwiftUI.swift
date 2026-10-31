@@ -2642,7 +2642,7 @@ final class SettingsSession: NSObject, ObservableObject {
     var trackpadGestureOptions: [SettingsPickerOption<Int>] {
         [
             .init(value: TrackpadGestureMode.pinchDisabled.rawValue, title: "No Pinch".localized),
-            .init(value: TrackpadGestureMode.zoomViewport.rawValue, title: "View Zoom".localized),
+            .init(value: TrackpadGestureMode.zoomViewport.rawValue, title: "View Zoom".localized, isEnabled: !usesMetal),
             .init(value: TrackpadGestureMode.nativeTrackpad.rawValue, title: "Native Mode".localized),
             .init(value: TrackpadGestureMode.ctrlAndScroll.rawValue, title: "Ctrl+Scroll".localized)
         ]

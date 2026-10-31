@@ -52,6 +52,7 @@ NS_INLINE StreamInputGeometry StreamInputGeometryMake(CGRect bounds, CGFloat asp
 @end
 
 @interface StreamView : UIView
+@property (nonatomic, readonly) BOOL viewportZoomSupported;
 
 @property (weak, nonatomic) UIView* streamFrameTopLayerView;
 @property (weak, nonatomic) id<UserInteractionDelegate> interactionDelegate;
