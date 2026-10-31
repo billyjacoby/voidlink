@@ -881,9 +881,11 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
             }
         }
         
-        OnScreenWidgetView.unfoldedExclusiveFolderSequence = profile.unfoldedExclusiveFolderSequence;
-        [OnScreenWidgetView setPostExclusiveUnfoldeds:profile.postExclusiveUnfoldedSequences];
-        [OnScreenWidgetView restoreFoldedStates];
+        if(reloadWidgets && !OnScreenWidgetView.editMode){
+            OnScreenWidgetView.unfoldedExclusiveFolderSequence = profile.unfoldedExclusiveFolderSequence;
+            [OnScreenWidgetView setPostExclusiveUnfoldeds:profile.postExclusiveUnfoldedSequences];
+            [OnScreenWidgetView restoreFoldedStates];
+        }
         
         NSLog(@"hasLegacyWidget %d %f", hasLegacyWidget, CACurrentMediaTime());
         // legacy widgets

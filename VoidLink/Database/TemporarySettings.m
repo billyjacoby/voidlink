@@ -18,6 +18,7 @@
     self = [self init];
     
     self.parent = settings;
+    self.audioBufferLimitMs = settings.audioBufferLimitMs;
     
 #if TARGET_OS_TV
     self.settingsMenuMode = settings.settingsMenuMode;

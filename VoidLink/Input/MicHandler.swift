@@ -203,6 +203,8 @@ public class MicHandler: NSObject {
 
     @objc public func startTapping() {
         // recordedBuffers.removeAll()
+        // Permit one new playback recovery after microphone capture restarts.
+        Connection.resetSysAudioPlaybackCooldown()
         isRecording = true
         self.timer?.start()
         /*
@@ -216,6 +218,8 @@ public class MicHandler: NSObject {
     }
 
     @objc public func stopTapping(stopEngine:Bool) {
+        // The shared audio session can change while microphone capture stops.
+        Connection.resetSysAudioPlaybackCooldown()
         isRecording = false
         self.timer?.pause()
         // engine.inputNode.removeTap(onBus: 0)

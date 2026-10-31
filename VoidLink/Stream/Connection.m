@@ -21,6 +21,7 @@
 
 #include "Limelight.h"
 #include "opus_multistream.h"
+#include <stdatomic.h>
 #include "VoidLink-Swift.h"
 
 @implementation Connection {
@@ -52,11 +53,42 @@ static float volume = 1.0;
 static int audioFrameSize;
 
 static bool useSystemAudioEngine;
+// Protected by the Connection class lock, which serializes engine lifecycle and
+// scheduling. AVAudio completion handlers take only playbackQueueLock, never
+// this lifecycle lock (stop/schedule may wait for a completion handler).
 static bool audioSessionInterrupted;
+static bool audioPlaybackActive;
+static uint64_t audioLifecycleGeneration;
+static atomic_int audioBufferLimitMs = 80;
+// Protected by the Connection class lock. Reset after app lifecycle changes and
+// microphone capture transitions so a new playback episode can be admitted.
+static BOOL hasTriggeredPlaybackRecovery;
+static CFTimeInterval lastPlaybackRecoveryTime;
+// Protected by playbackQueueLock. Completion handlers from prior generations
+// must not affect the queue accounting for a rebuilt audio engine.
+static bool audioPlaybackBackpressure;
 static AVAudioEngine *audioEngine;
 static AVAudioPlayerNode *audioPlayerNode;
 static AVAudioPCMBuffer *pcmBuffer;
 static AVAudioFormat *audioFormat;
+static NSObject *playbackQueueLock;
+static uint64_t playbackGeneration;
+static AVAudioFramePosition playbackQueuedFrames;
+static uint64_t playbackDroppedBuffers;
+
+static void ResetPlaybackQueue(void);
+
+static void StopSystemAudioPlayback(void) {
+    @synchronized ([Connection class]) {
+        audioPlaybackActive = false;
+        audioSessionInterrupted = true;
+        audioLifecycleGeneration++;
+        ResetPlaybackQueue();
+        // Do not hold playbackQueueLock across AVAudio calls.
+        [audioPlayerNode stop];
+        [audioEngine stop];
+    }
+}
 
 static bool muteInBackground;
 static bool fullColorRange;
@@ -256,6 +288,10 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
 {
     int err;
     SDL_AudioSpec want, have;
+    uint64_t lifecycleGeneration;
+    @synchronized ([Connection class]) {
+        lifecycleGeneration = audioLifecycleGeneration;
+    }
     
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
         Log(LOG_E, @"Failed to initialize audio subsystem: %s\n", SDL_GetError());
@@ -306,6 +342,7 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
     // System audio engine initialization
     DataManager* dataMan = [[DataManager alloc] init];
     TemporarySettings* tempSettings = [dataMan getSettings];
+    [Connection setAudioBufferLimitMs:tempSettings.audioBufferLimitMs ? tempSettings.audioBufferLimitMs.intValue : 80];
     bool useBluetoothD2P = tempSettings.useBuiltinMic || !tempSettings.redirectMic;
     AVAudioSessionCategoryOptions bluetoothAudioOption = useBluetoothD2P ? AVAudioSessionCategoryOptionAllowBluetoothA2DP : AVAudioSessionCategoryOptionAllowBluetooth;
     AVAudioSessionCategoryOptions volumeMixOption = tempSettings.duckOtherApps ? AVAudioSessionCategoryOptionDuckOthers : AVAudioSessionCategoryOptionMixWithOthers;
@@ -316,15 +353,25 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
                    error:nil];
     if(tempSettings.redirectMic) if(@available(iOS 13.0, *)) [session setAllowHapticsAndSystemSoundsDuringRecording:YES error:nil];
     [session setActive:YES error:nil];
-    audioSessionInterrupted = false;
-
-    AudioEngineInit(audioConfig.sampleRate, audioConfig.channelCount);
+    @synchronized ([Connection class]) {
+        // Termination may have raced the SDL/Opus/session setup above.
+        if (lifecycleGeneration != audioLifecycleGeneration) {
+            ArCleanup();
+            return -1;
+        }
+        audioPlaybackActive = true;
+        audioLifecycleGeneration++;
+        audioSessionInterrupted = false;
+        AudioEngineInit(audioConfig.sampleRate, audioConfig.channelCount);
+    }
 
     return 0;
 }
 
 void ArCleanup(void)
 {
+    StopSystemAudioPlayback();
+
     if (opusDecoder != NULL) {
         opus_multistream_decoder_destroy(opusDecoder);
         opusDecoder = NULL;
@@ -350,6 +397,10 @@ void ArCleanup(void)
     volume = powf(linearVolume, exponent);
 }
 
++ (void)setAudioBufferLimitMs:(int)milliseconds {
+    atomic_store_explicit(&audioBufferLimitMs, MIN(300, MAX(35, milliseconds)), memory_order_relaxed);
+}
+
 + (void)setMuteInBackground:(bool)mute {
     muteInBackground = mute;
 }
@@ -366,7 +417,21 @@ void ArCleanup(void)
     useDualSenseAuthoredPCM = use;
 }
 
+static void ResetPlaybackQueue(void) {
+    static dispatch_once_t queueLockOnce;
+    dispatch_once(&queueLockOnce, ^{ playbackQueueLock = [[NSObject alloc] init]; });
+    @synchronized (playbackQueueLock) {
+        playbackGeneration++;
+        audioPlaybackBackpressure = false;
+        playbackQueuedFrames = 0;
+        playbackDroppedBuffers = 0;
+    }
+}
+
 void AudioEngineInit(int sampleRate, int channelCount) {
+    // All callers hold the Connection class lifecycle lock.
+    if (!audioPlaybackActive) return;
+    ResetPlaybackQueue();
     
     audioEngine = [[AVAudioEngine alloc] init];
     audioPlayerNode = [[AVAudioPlayerNode alloc] init];
@@ -419,40 +484,75 @@ void AudioEngineInit(int sampleRate, int channelCount) {
     [audioPlayerNode play];
 }
 
++ (void)resetSysAudioPlaybackCooldown {
+    @synchronized ([Connection class]) {
+        hasTriggeredPlaybackRecovery = NO;
+        lastPlaybackRecoveryTime = 0;
+    }
+}
+
+// Only the first backpressure episode within the cooldown is allowed to start.
+// The caller drops until the existing queue drains, avoiding repeated recovery
+// work while an audio route is stalled.
+static BOOL TryBeginPlaybackRecovery(void) {
+    @synchronized ([Connection class]) {
+        CFTimeInterval now = CACurrentMediaTime();
+        if (hasTriggeredPlaybackRecovery && now - lastPlaybackRecoveryTime <= 20.0) {
+            return NO;
+        }
+        hasTriggeredPlaybackRecovery = YES;
+        lastPlaybackRecoveryTime = now;
+        return YES;
+    }
+}
+
 + (void)resetSysAudioPlayback {
-    audioSessionInterrupted = true;
+    uint64_t lifecycleGeneration;
+    @synchronized ([Connection class]) {
+        if (!audioPlaybackActive || !TryBeginPlaybackRecovery()) return;
+        lifecycleGeneration = ++audioLifecycleGeneration;
+        audioSessionInterrupted = true;
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0),
                    dispatch_get_main_queue(), ^{
-        @try {
-            if (audioPlayerNode) {
-                [audioPlayerNode stop];
-            }
-
-            if (audioEngine) {
-                [audioEngine stop];
-                [audioEngine reset];
-
+        @synchronized ([Connection class]) {
+            if (!audioPlaybackActive || lifecycleGeneration != audioLifecycleGeneration) return;
+            @try {
+                ResetPlaybackQueue();
                 if (audioPlayerNode) {
-                    [audioEngine disconnectNodeInput:audioPlayerNode];
-                    [audioEngine disconnectNodeOutput:audioPlayerNode];
-                    [audioEngine detachNode:audioPlayerNode];
+                    [audioPlayerNode stop];
                 }
+
+                if (audioEngine) {
+                    [audioEngine stop];
+                    [audioEngine reset];
+
+                    if (audioPlayerNode) {
+                        [audioEngine disconnectNodeInput:audioPlayerNode];
+                        [audioEngine disconnectNodeOutput:audioPlayerNode];
+                        [audioEngine detachNode:audioPlayerNode];
+                    }
+                }
+
+                audioEngine = nil;
+                audioPlayerNode = nil;
+
+                AudioEngineInit(audioConfig.sampleRate, audioConfig.channelCount);
             }
-
-            audioEngine = nil;
-            audioPlayerNode = nil;
-
-            AudioEngineInit(audioConfig.sampleRate, audioConfig.channelCount);
+            @catch (NSException *exception) {
+                NSLog(@"resetSysAudioPlayback failed: %@, reason: %@",
+                      exception.name,
+                      exception.reason);
+            }
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                @synchronized ([Connection class]) {
+                    if (audioPlaybackActive && lifecycleGeneration == audioLifecycleGeneration) {
+                        audioSessionInterrupted = false;
+                    }
+                }
+            });
         }
-        @catch (NSException *exception) {
-            NSLog(@"resetSysAudioPlayback failed: %@, reason: %@",
-                  exception.name,
-                  exception.reason);
-        }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            audioSessionInterrupted = false;
-        });
     });
 }
 
@@ -483,20 +583,72 @@ void ArDecodeAndPlaySample(char* sampleData, int sampleLength)
         float* fbuf = (float*)audioBuffer;
         
         if(useSystemAudioEngine){
-            // 创建 AVAudioPCMBuffer
-            AVAudioFrameCount frameCount = decodeLen;
-            AVAudioPCMBuffer *buffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:audioFormat frameCapacity:frameCount];
-            buffer.frameLength = frameCount;
-            
-            // 拷贝数据到 buffer
-            for (int ch = 0; ch < audioConfig.channelCount; ch++) {
-                float *dst = buffer.floatChannelData[ch];
-                for (int i = 0; i < decodeLen; i++) {
-                    dst[i] = fbuf[i * audioConfig.channelCount + ch] * volume; // 非交错数据
+            @synchronized ([Connection class]) {
+                if (!audioPlaybackActive || audioSessionInterrupted || !audioFormat ||
+                    !audioPlayerNode.isPlaying || !audioEngine.isRunning) return;
+                // 创建 AVAudioPCMBuffer
+                AVAudioFrameCount frameCount = decodeLen;
+                AVAudioPCMBuffer *buffer = [[AVAudioPCMBuffer alloc] initWithPCMFormat:audioFormat frameCapacity:frameCount];
+                if (!buffer) return;
+                buffer.frameLength = frameCount;
+
+                // 拷贝数据到 buffer
+                for (int ch = 0; ch < audioConfig.channelCount; ch++) {
+                    float *dst = buffer.floatChannelData[ch];
+                    for (int i = 0; i < decodeLen; i++) {
+                        dst[i] = fbuf[i * audioConfig.channelCount + ch] * volume; // 非交错数据
+                    }
+                }
+                // AVAudioPlayerNode has no inherent bounded queue. Keep enough
+                // queued audio for smooth playback, but discard excess data so a
+                // stalled route cannot turn into seconds of delayed audio.
+                AVAudioPlayerNode *player = audioPlayerNode;
+                uint64_t generation;
+                __block BOOL bufferAccounted = YES;
+                @synchronized (playbackQueueLock) {
+                    AVAudioFramePosition triggerLimit = MAX(frameCount,
+                        audioConfig.sampleRate * atomic_load_explicit(&audioBufferLimitMs, memory_order_relaxed) / 1000);
+                    // Once rejecting, resume only after the queued audio has
+                    // drained to a short playable buffer.
+                    AVAudioFramePosition resumeLimit = MIN(triggerLimit,
+                        MAX(frameCount, audioConfig.sampleRate * 0.025));
+                    AVAudioFramePosition limit = audioPlaybackBackpressure ? resumeLimit : triggerLimit;
+                    // Queue bounds are unconditional; cooldown applies only to
+                    // engine resets, never to admission of excess audio.
+                    if (playbackQueuedFrames + frameCount > limit) {
+                        audioPlaybackBackpressure = true;
+                        playbackDroppedBuffers++;
+                        return;
+                    }
+
+                    audioPlaybackBackpressure = false;
+                    generation = playbackGeneration;
+                    playbackQueuedFrames += frameCount;
+                }
+                // Lifecycle lock stays held through scheduling, but queue lock
+                // does not: AVAudio may invoke/wait for completion reentrantly.
+                @try {
+                    [player scheduleBuffer:buffer
+                     completionCallbackType:AVAudioPlayerNodeCompletionDataRendered
+                     completionHandler:^(AVAudioPlayerNodeCompletionCallbackType callbackType) {
+                        @synchronized (playbackQueueLock) {
+                            if (bufferAccounted && generation == playbackGeneration) {
+                                bufferAccounted = NO;
+                                playbackQueuedFrames = MAX(0, playbackQueuedFrames - frameCount);
+                            }
+                        }
+                    }];
+                }
+                @catch (NSException *exception) {
+                    @synchronized (playbackQueueLock) {
+                        if (bufferAccounted && generation == playbackGeneration) {
+                            bufferAccounted = NO;
+                            playbackQueuedFrames = MAX(0, playbackQueuedFrames - frameCount);
+                        }
+                    }
+                    NSLog(@"Audio buffer scheduling failed: %@", exception.reason);
                 }
             }
-            // 播放
-            if(!audioSessionInterrupted) [audioPlayerNode scheduleBuffer:buffer completionHandler:nil];
         }
         
         else{
@@ -644,8 +796,7 @@ void ClDs5HapticsIrV2(const LI_DS5_HAPTICS_IR_FRAME_V2* frame)
     // won't be able to acquire it if LiStartConnection is in
     // progress.
     LiInterruptConnection();
-    [audioPlayerNode stop];
-    [audioEngine stop];
+    StopSystemAudioPlayback();
     [ControllerUtil stopAllDualSenseHaptics];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 
@@ -664,19 +815,31 @@ void ClDs5HapticsIrV2(const LI_DS5_HAPTICS_IR_FRAME_V2* frame)
     AVAudioSessionInterruptionType type =
         [info[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
     
-    switch (type) {
-        case AVAudioSessionInterruptionTypeBegan:
-            audioSessionInterrupted = true;
-            [audioPlayerNode stop];
-            [audioEngine stop];
-            break;
-        case AVAudioSessionInterruptionTypeEnded:
-            AudioEngineInit(audioConfig.sampleRate, audioConfig.channelCount);
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5*NSEC_PER_SEC), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                audioSessionInterrupted = false;
-            });
-        default:
-            break;
+    @synchronized ([Connection class]) {
+        if (!audioPlaybackActive) return;
+        switch (type) {
+            case AVAudioSessionInterruptionTypeBegan:
+                audioLifecycleGeneration++;
+                audioSessionInterrupted = true;
+                ResetPlaybackQueue();
+                [audioPlayerNode stop];
+                [audioEngine stop];
+                break;
+            case AVAudioSessionInterruptionTypeEnded: {
+                uint64_t lifecycleGeneration = ++audioLifecycleGeneration;
+                AudioEngineInit(audioConfig.sampleRate, audioConfig.channelCount);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5*NSEC_PER_SEC), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                    @synchronized ([Connection class]) {
+                        if (audioPlaybackActive && lifecycleGeneration == audioLifecycleGeneration) {
+                            audioSessionInterrupted = false;
+                        }
+                    }
+                });
+                break;
+            }
+            default:
+                break;
+        }
     }
 }
 

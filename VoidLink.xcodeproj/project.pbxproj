@@ -357,6 +357,7 @@
 		18A765BC2ECD51FB004784AA /* ControllerUtil.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerUtil.swift; sourceTree = "<group>"; };
 		18B317022EE67A39009B62C2 /* InertialScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InertialScroller.swift; sourceTree = "<group>"; };
 		18BF141D2E0D7A00009DEE4F /* VoidLink v1.0.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "VoidLink v1.0.xcdatamodel"; sourceTree = "<group>"; };
+		A70400000000000000000001 /* VoidLink v1.1.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "VoidLink v1.1.xcdatamodel"; sourceTree = "<group>"; };
 		18D43D7E2F050240008C326F /* PressureCurve.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PressureCurve.swift; sourceTree = "<group>"; };
 		18D43D802F050240008C326F /* PencilTipOffsetCalibrationViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PencilTipOffsetCalibrationViewController.swift; sourceTree = "<group>"; };
 		18E4BCE92E891895000A8657 /* MotionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionHandler.swift; sourceTree = "<group>"; };
@@ -2294,9 +2295,10 @@
 			isa = XCVersionGroup;
 			children = (
 				18BF141D2E0D7A00009DEE4F /* VoidLink v1.0.xcdatamodel */,
+				A70400000000000000000001 /* VoidLink v1.1.xcdatamodel */,
 				FB290D0619B2C406004C83CF /* Limelight.xcdatamodel */,
 			);
-			currentVersion = 18BF141D2E0D7A00009DEE4F /* VoidLink v1.0.xcdatamodel */;
+			currentVersion = A70400000000000000000001 /* VoidLink v1.1.xcdatamodel */;
 			path = Limelight.xcdatamodeld;
 			sourceTree = "<group>";
 			versionGroupType = wrapper.xcdatamodel;

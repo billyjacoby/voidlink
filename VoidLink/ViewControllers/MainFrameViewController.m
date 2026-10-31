@@ -933,11 +933,11 @@ static NSMutableSet* hostList;
     [VideoDecoderRenderer setFrameInterpolationEnabled: streamSettings.framePacingMode.intValue == FramePacingModeInterpolation];
     _streamConfig.frameRate = [streamSettings.framerate intValue];
     if (@available(iOS 10.3, *)) {
-        UIWindow *window = UIApplication.sharedApplication.windows.firstObject;
-        NSInteger maximumFramesPerSecond = window.screen.maximumFramesPerSecond;
-        if(UIScreen.screens.count > 1 && streamSettings.externalDisplayMode.intValue == 1){ //AirPlaying
-            maximumFramesPerSecond = UIScreen.screens.lastObject.maximumFramesPerSecond;
+        UIScreen *screen = [PublicUtils screenForView:self.view];
+        if (streamSettings.externalDisplayMode.intValue == 1 && PublicUtils.externalScreen) {
+            screen = PublicUtils.externalScreen;
         }
+        NSInteger maximumFramesPerSecond = screen.maximumFramesPerSecond;
         // Don't stream more FPS than the display can show
         if (_streamConfig.frameRate > maximumFramesPerSecond) {
             _streamConfig.frameRate = (int)maximumFramesPerSecond;
@@ -951,8 +951,26 @@ static NSMutableSet* hostList;
     // Older builds saved portrait-flipped preset dimensions when Settings was
     // opened upright. Restore the preset's orientation, never a custom size.
     NSInteger resolution = streamSettings.resolutionSelected.integerValue;
+    // Resolve dynamic presets at launch, even when no Settings menu was opened
+    // after folding, resizing the window, or attaching an external display.
+    if (resolution == 3 || resolution == 4) {
+        CMVideoDimensions table[5] = {0};
+        [self fillResolutionTable:table externalDisplayMode:streamSettings.externalDisplayMode.intValue];
+        if (table[resolution].width > 0 && table[resolution].height > 0) {
+            CMVideoDimensions dimensions = table[resolution];
+            if (streamSettings.framePacingMode.intValue == FramePacingModeInterpolation) {
+                CMVideoDimensions interpolation = [FrameInterpolator interpolatableDimensionsBy:dimensions
+                    maximumDimension:streamSettings.interpolationMaximumDimension.intValue
+                    maximumPixelCount:streamSettings.interpolationMaximumPixelCount.intValue];
+                dimensions = [FrameInterpolator scaledStreamDimensionsWithPresetDimensions:dimensions
+                    interpolationDimensions:interpolation scale:streamSettings.streamDimensionScale.floatValue];
+            }
+            _streamConfig.width = dimensions.width;
+            _streamConfig.height = dimensions.height;
+        }
+    }
     BOOL landscapeNative = (resolution == 3 || resolution == 4) && !streamSettings.unlockDisplayOrientation &&
-        !(streamSettings.externalDisplayMode.intValue == 1 && UIScreen.screens.count > 1);
+        !(streamSettings.externalDisplayMode.intValue == 1 && PublicUtils.externalScreen != nil);
     if ((resolution >= 0 && resolution <= 2) || landscapeNative) {
         int width = MAX(_streamConfig.width, _streamConfig.height);
         _streamConfig.height = MIN(_streamConfig.width, _streamConfig.height);
@@ -2354,14 +2372,17 @@ static NSMutableSet* hostList;
     UIWindow *window = self.view.window;
     NSLog(@" window %@", window);
 
-    CGFloat screenScale = window.screen.scale;
-    CGFloat safeAreaWidth = (window.frame.size.width - window.safeAreaInsets.left - window.safeAreaInsets.right) * screenScale;
-    CGFloat appWindowWidth = window.frame.size.width * screenScale;
-    CGFloat appWindowHeight = window.frame.size.height * screenScale;
+    UIScreen *screen = [PublicUtils screenForView:self.view];
+    CGRect localBounds = window ? window.bounds : screen.bounds;
+    CGFloat screenScale = screen.nativeScale;
+    CGFloat safeAreaWidth = (localBounds.size.width - window.safeAreaInsets.left - window.safeAreaInsets.right) * screenScale;
+    CGFloat appWindowWidth = localBounds.size.width * screenScale;
+    CGFloat appWindowHeight = localBounds.size.height * screenScale;
 
-    if(externalDisplayMode == 1 && UIScreen.screens.count > 1){
-        CGRect bounds = [UIScreen.screens.lastObject bounds];
-        screenScale = [UIScreen.screens.lastObject scale];
+    UIScreen *external = externalDisplayMode == 1 ? PublicUtils.externalScreen : nil;
+    if(external){
+        CGRect bounds = external.bounds;
+        screenScale = external.nativeScale;
         appWindowWidth = bounds.size.width * screenScale;
         appWindowHeight = bounds.size.height * screenScale;
     }
@@ -2373,7 +2394,7 @@ static NSMutableSet* hostList;
     // add app window resolution and not swap width and height
     resolutionTable[3] = (CMVideoDimensions){ .width = (int32_t)safeAreaWidth, .height = (int32_t)appWindowHeight };
     resolutionTable[4] = (CMVideoDimensions){ .width = (int32_t)appWindowWidth, .height = (int32_t)appWindowHeight };
-    BOOL externalScreen = externalDisplayMode == 1 && UIScreen.screens.count > 1;
+    BOOL externalScreen = external != nil;
     if (externalScreen) resolutionTable[3] = resolutionTable[4];
     Settings *settings = [[[DataManager alloc] init] retrieveSettings];
     if (!externalScreen && !settings.unlockDisplayOrientation) {

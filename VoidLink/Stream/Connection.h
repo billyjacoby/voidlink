@@ -31,7 +31,9 @@
 -(NSString*) getActiveCodecName;
 
 + (void)setVolume:(float)newVolume;
++ (void)setAudioBufferLimitMs:(int)milliseconds;
 + (void)resetSysAudioPlayback;
++ (void)resetSysAudioPlaybackCooldown;
 
 + (bool)useDualSenseAuthoredPCM;
 + (void)setuseDualSenseAuthoredPCM:(bool)use;

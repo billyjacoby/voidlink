@@ -24,6 +24,7 @@
 @property (nonatomic, retain) NSNumber * height;
 @property (nonatomic, retain) NSNumber * width;
 @property (nonatomic, retain) NSNumber * audioConfig;
+@property (nonatomic, retain) NSNumber * audioBufferLimitMs;
 @property (nonatomic, retain) NSNumber * onscreenControls;
 @property (nonatomic, retain) NSNumber * gyroMode;
 @property (nonatomic, retain) NSNumber * keyboardToggleFingers;

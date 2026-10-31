@@ -115,6 +115,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     UIActivityIndicatorView *_spinner;
     StreamView *_streamView;
     BOOL _magnifierViewportInteractionActive;
+    NSUInteger _viewportTransitionGeneration;
     BOOL _userIsInteracting;
     bool viewIsBeingResized;
     bool previousOnScreenWidgetEnabled;
@@ -1287,6 +1288,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
 - (void)willMoveToParentViewController:(UIViewController *)parent {
     // Only cleanup when we're being destroyed
     if (parent == nil) {
+        ++_viewportTransitionGeneration;
         [self stopExternalDisplayRouting];
         [_streamView cleanUp];
         _streamView = nil;
@@ -1463,6 +1465,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
 }
 
 - (void)returnToMainFrame {
+    ++_viewportTransitionGeneration;
     if (@available(iOS 13.0, *)) {
         // [ControllerNavigator setUINavigationDelegate:[_mainFrameViewcontroller isInAppView] ? _mainFrameViewcontroller : _mainFrameViewcontroller.hostCollectionVC];
         [ControllerNavigator restorePreviousUINavigationDelegateWithIfCurrentDelegateIs:self];
@@ -1801,6 +1804,7 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
 
 // This will fire if the user opens control center or gets a low battery message
 - (void)applicationWillResignActive:(NSNotification *)notification {
+    [Connection resetSysAudioPlaybackCooldown];
     //[self.pipController startPictureInPicture];
     //sleep(1);
     if(_settings.framePacingMode.intValue == FramePacingModeQueue) appDidEnterBackgroundWithoutPip = true;
@@ -1821,6 +1825,7 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
 }
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification {
+    [Connection resetSysAudioPlaybackCooldown];
 #if !TARGET_OS_TV
     if (_externalTrackpadActive) {
         [self trackpadDeviceOrientationChanged:nil];
@@ -1880,6 +1885,7 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
 
 // This fires when the home button is pressed
 - (void)applicationDidEnterBackground:(UIApplication *)application {
+    [Connection resetSysAudioPlaybackCooldown];
     NSLog(@"did enter background, %d, %@, %d", _settings.enablePIP, self.pipController, self.pipController.isPictureInPictureActive);
     if (_settings.enablePIP && self.pipController && self.pipController.isPictureInPictureActive) {
         //Log(LOG_I, @"PIP is active, not terminating stream");
@@ -2528,72 +2534,28 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
 
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
-
-    [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
-        [OnScreenWidgetView refreshPortraitMenuLayout];
-    }];
-
+    NSUInteger generation = ++_viewportTransitionGeneration;
     if (_externalTrackpadActive) {
         [_streamView resetRelativeTouchInput];
-        [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
-            [self layoutExternalTrackpad];
-        }];
     }
-    
     [self resetMagnifierStreamViewWithAnimated:false];
-    
-    // handle view size change for on-screen widgets
-    CGSize oldSize = self.view.bounds.size;
-    CGFloat scaleX = oldSize.width > 0 ? size.width / oldSize.width : 1;
-    CGFloat scaleY = oldSize.height > 0 ? size.height / oldSize.height : 1;
-    for(OnScreenWidgetView* widget in OnScreenWidgetView.mapping.allValues){
-        CGPoint oldCenter = widget.center;
-        CGPoint oldStoredCenter = widget.storedCenter;
-        
-        if(widget.autoDockEnabled){
-            widget.autoDockIdleDuration = fmax(widget.autoDockIdleDuration, 2.0);
-            [widget autoDockStopCountdown];
-        }
-        dispatch_time_t delayTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC));
-        dispatch_after(delayTime, dispatch_get_main_queue(), ^{
-            if(widget.autoDockEnabled){
-                OnScreenWidgetView.autoDockRestoreInitByViewResize = true;
-                [widget restoreFromAutoDockWithAnimated:true];
-            }
-        });
-        
-        [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext>  _Nonnull context) {
-            widget.center = CGPointMake(oldCenter.x * scaleX,oldCenter.y * scaleY);
-            widget.storedCenter = CGPointMake(oldStoredCenter.x * scaleX,oldStoredCenter.y * scaleY);
-        } completion:nil];
-    }
-
-    
-    dispatch_time_t delay = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC));
-    dispatch_after(delay, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        [self->_streamMan setNeedRequeuing:true];
-    });
-
-    /*
-    if (_isRestoringFromPiP) {
-        Log(LOG_I, @"View size changed during PiP restore, skipping redundant reconfiguration.");
-        return;
-    } */
-
-    // Log(LOG_I, @"View size changed, terminating stream");
-
-    double delayInSeconds = 0.2;
+    [OnScreenWidgetView transitionWidgetsInView:self.view toSize:size coordinator:coordinator];
     if (_delayedRemoveExtScreen) {
         dispatch_block_cancel(_delayedRemoveExtScreen);
+        _delayedRemoveExtScreen = nil;
     }
-        
-    dispatch_block_t block = dispatch_block_create(0, ^{
+    void (^finish)(void) = ^{
+        if (generation != self->_viewportTransitionGeneration) return;
+        if (self->_externalTrackpadActive) [self layoutExternalTrackpad];
         [self handleViewResize];
         [self reConfigStreamViewRealtimeAndReloadSettings:YES reloadOnscreenWidgets:NO];
-    });
-    _delayedRemoveExtScreen = block;
-    dispatch_time_t delayTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
-    dispatch_after(delayTime, dispatch_get_main_queue(), block);
+        [OnScreenWidgetView refreshPortraitMenuLayout];
+        [self->_streamMan setNeedRequeuing:true];
+    };
+    BOOL registered = [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        finish();
+    }];
+    if (!registered) dispatch_async(dispatch_get_main_queue(), finish);
 }
 
 - (void)controllerArrivalWithPlayerIndex:(int8_t)index{

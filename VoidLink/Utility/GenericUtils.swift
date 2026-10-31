@@ -721,6 +721,9 @@ import UIKit
     
     @objc public static var settingsMenuNavigationBarHeight: CGFloat {
         // return isIPhone() ? 44 : hostViewNavigationBarHeight
+        if PublicUtils.isFoldableRAMCached {
+            return hostViewNavigationBarHeight + 11
+        }
         switch UIDevice.current.userInterfaceIdiom {
         case .phone:
             return PublicUtils.liquidGlassEnabled ? hostViewNavigationBarHeight+5 : hostViewNavigationBarHeight

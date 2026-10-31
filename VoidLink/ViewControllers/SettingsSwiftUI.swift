@@ -259,6 +259,8 @@ private let settingsLegacyHelpByStackIdentifier: [String: SettingsLegacyHelpCont
     // Drawing Toolkit
     "pencilTickStack": .init(messageKey: "pencilTickStackTip", learnMoreURLKey: "PencilProPackURL"),
     "pencilModeStack": .init(messageKey: "pencilModeStackTip", learnMoreURLKey: nil),
+    "doubleTapShortcutStack": .init(messageKey: "doubleTapShortcutStackTip", learnMoreURLKey: nil),
+    "squeezeShortcutStack": .init(messageKey: "squeezeShortcutStackTip", learnMoreURLKey: nil),
 
     // Gestures
     "softKeyboardGestureStack": .init(messageKey: "softKeyboardGestureStackTip", learnMoreURLKey: "softKeyboardGestureStackDoc"),
@@ -393,6 +395,7 @@ enum SettingsItemID: String, Hashable, Identifiable {
     case duckOtherApps = "duckOtherAppStack"
     case muteInBackground = "muteInBackgroundStack"
     case audioConfig = "audioConfigStack"
+    case audioBufferLimit = "audioBufferLimitStack"
 
     // MARK: Others
 
@@ -502,6 +505,7 @@ enum SettingsItemID: String, Hashable, Identifiable {
         case .duckOtherApps: return "Duck Other Apps"
         case .muteInBackground: return "Mute in Background"
         case .audioConfig: return "Audio Configuration"
+        case .audioBufferLimit: return "Audio Buffer Limit"
         case .statsOverlay: return "Statistics Overlay"
         case .unlockDisplayOrientation: return "Rotate While Streaming"
         case .backgroundSessionTimer: return "Background Session"
@@ -1290,6 +1294,7 @@ final class SettingsItemRegistry: ObservableObject {
     let duckOtherApps = SettingsItemModel<Bool>(id: .duckOtherApps, value: false)
     let muteInBackground = SettingsItemModel<Bool>(id: .muteInBackground, value: false)
     let audioConfig = SettingsItemModel<Int>(id: .audioConfig, value: AudioConfig.stereo.rawValue)
+    let audioBufferLimit = SettingsItemModel<Double>(id: .audioBufferLimit, value: 80)
 
     // MARK: Others
 
@@ -1412,6 +1417,7 @@ final class SettingsItemRegistry: ObservableObject {
             duckOtherApps.objectWillChange,
             muteInBackground.objectWillChange,
             audioConfig.objectWillChange,
+            audioBufferLimit.objectWillChange,
 
             // Others
             statsOverlay.objectWillChange,
@@ -1924,6 +1930,7 @@ final class SettingsSession: NSObject, ObservableObject {
         itemRegistry.duckOtherApps.value = snapshot.duckOtherApps
         itemRegistry.muteInBackground.value = snapshot.muteInBackground
         itemRegistry.audioConfig.value = settingsSanitizedAudioConfig(snapshot.audioConfig.intValue)
+        itemRegistry.audioBufferLimit.value = min(300, max(50, snapshot.audioBufferLimitMs?.doubleValue ?? 80))
 
         // MARK: Others
 
@@ -3307,6 +3314,20 @@ final class SettingsSession: NSObject, ObservableObject {
                 options: { $0.audioConfigOptions },
                 distribution: .proportionalToContent,
                 hasInfo: true
+            ),
+            sliderItem(
+                \.audioBufferLimit,
+                setValue: { session, model, newValue in
+                    let value = min(300, max(50, newValue.rounded()))
+                    model.value = value
+                    if session.settingsExpandedInStreamView {
+                        Connection.setAudioBufferLimitMs(Int32(value))
+                    }
+                },
+                range: 50...300,
+                clampedTo: 50...300,
+                valueText: { _, model in "\(Int(model.value)) ms" },
+                isVisible: { $0.itemRegistry.audioConfig.value == AudioConfig.stereo.rawValue }
             )
         ]
     }
@@ -3862,10 +3883,10 @@ final class SettingsSession: NSObject, ObservableObject {
 
     private var availableDisplaySize: CGSize {
         let screen = targetScreen
-        let bounds = itemRegistry.externalDisplayMode.value == 1
+        let bounds = itemRegistry.externalDisplayMode.value == 1 && PublicUtils.externalScreen != nil
             ? screen.bounds
             : (presentingController?.view.window?.bounds ?? screen.bounds)
-        return orientedNativeStreamSize(CGSize(width: bounds.width * screen.scale, height: bounds.height * screen.scale))
+        return orientedNativeStreamSize(CGSize(width: bounds.width * screen.nativeScale, height: bounds.height * screen.nativeScale))
     }
 
     private func orientedNativeStreamSize(_ size: CGSize) -> CGSize {
@@ -3880,8 +3901,8 @@ final class SettingsSession: NSObject, ObservableObject {
         }
         let insets = window.safeAreaInsets
         return orientedNativeStreamSize(CGSize(
-            width: (window.bounds.width - insets.left - insets.right) * window.screen.scale,
-            height: window.bounds.height * window.screen.scale
+            width: (window.bounds.width - insets.left - insets.right) * window.screen.nativeScale,
+            height: window.bounds.height * window.screen.nativeScale
         ))
     }
 
@@ -4507,6 +4528,9 @@ final class SettingsSession: NSObject, ObservableObject {
     /// section-specific.
     func persistSettings() {
 
+        let streaming = (presentingController as? SettingsViewController)?
+            .mainFrameViewController?.isStreaming() ?? isStreaming
+
         if isStreaming,
            let settingsController = presentingController as? SettingsViewController,
            let mainFrameController = settingsController.mainFrameViewController {
@@ -4527,8 +4551,13 @@ final class SettingsSession: NSObject, ObservableObject {
 
         // MARK: Video
 
-        settings.width = NSNumber(value: isStreaming ? customWidth : chosenWidth)
-        settings.height = NSNumber(value: isStreaming ? customHeight : chosenHeight)
+        // Opening or resizing Settings during a stream must not replace the
+        // saved launch dimensions with this session's stale/custom snapshot.
+        if !streaming {
+            let dimensions = chosenStreamDimensionsForBitrate
+            settings.width = NSNumber(value: dimensions.width)
+            settings.height = NSNumber(value: dimensions.height)
+        }
         settings.resolutionSelected = NSNumber(value: itemRegistry.usesCustomResolution.value ? 5 : itemRegistry.resolution.value)
         settings.framerate = NSNumber(value: itemRegistry.frameRate.value)
         settings.bitrate = NSNumber(value: Int(itemRegistry.bitrate.value.rounded()))
@@ -4606,6 +4635,7 @@ final class SettingsSession: NSObject, ObservableObject {
         settings.duckOtherApps = itemRegistry.duckOtherApps.value
         settings.muteInBackground = itemRegistry.muteInBackground.value
         settings.audioConfig = NSNumber(value: settingsSanitizedAudioConfig(itemRegistry.audioConfig.value))
+        settings.audioBufferLimitMs = NSNumber(value: Int(min(300, max(50, itemRegistry.audioBufferLimit.value.rounded()))))
 
         // MARK: Others
 
@@ -5537,6 +5567,20 @@ final class SettingsSession: NSObject, ObservableObject {
                 forKey: "controllerGyroSwitchButtonStackTip",
                 (ControllerElement(rawValue: profile.controllerGyroSwitchToggle) ?? .null).displayName,
                 (ControllerElement(rawValue: profile.controllerGyroSwitchHold) ?? .null).displayName,
+            )
+        } else if id == .doubleTapShortcut {
+            let profile = OSCProfilesManager.sharedManager(.zero).getSelectedProfile()
+            message = LocalizationHelper.localizedString(
+                forKey: "doubleTapShortcutStackTip",
+                profile.brushShortcut.isEmpty ? "Null".localized : profile.brushShortcut,
+                profile.eraserShortcut.isEmpty ? "Null".localized : profile.eraserShortcut
+            )
+        } else if id == .squeezeShortcut {
+            let profile = OSCProfilesManager.sharedManager(.zero).getSelectedProfile()
+            message = LocalizationHelper.localizedString(
+                forKey: "squeezeShortcutStackTip",
+                profile.squeezeStartShortcut.isEmpty ? "Null".localized : profile.squeezeStartShortcut,
+                profile.squeezeEndShortcut.isEmpty ? "Null".localized : profile.squeezeEndShortcut
             )
         } else if id == .controllerNavigation, let snapshot = DataManager().getSettings() {
             message = LocalizationHelper.localizedString(

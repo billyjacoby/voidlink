@@ -671,39 +671,33 @@ final class LayoutOnScreenControlsViewController: UIViewController, OnScreenWidg
         if self.profileSelectorLoadingMode == .selectProfileFromLayoutTool {
             
             let oldSize = view.bounds.size
-            if oldSize.width > 0, oldSize.height > 0 {
+            if oldSize.width > 0, oldSize.height > 0, size.width > 0, size.height > 0 {
                 let scaleX = size.width / oldSize.width
                 let scaleY = size.height / oldSize.height
 
-                for widget in OnScreenWidgetView.mapping.values {
-                    let oldCenter = widget.center
-                    let oldStoredCenter = widget.storedCenter
+                OnScreenWidgetView.transitionWidgets(in: view, to: size, coordinator: coordinator)
 
-                    coordinator.animate(alongsideTransition: { _ in
-                        widget.center = CGPoint(
-                            x: oldCenter.x * scaleX,
-                            y: oldCenter.y * scaleY
-                        )
-                        widget.storedCenter = CGPoint(
-                            x: oldStoredCenter.x * scaleX,
-                            y: oldStoredCenter.y * scaleY
-                        )
-                    }, completion: nil)
-                }
-
-                for buttonLayer in self.layoutOSC.oscButtonLayerPool {
-                    if let layer = buttonLayer as? CALayer {
-                        let oldPosition = layer.position
-                        coordinator.animate(alongsideTransition: { _ in
-                            if layer == self.layoutOSC._leftStick
-                               || layer == self.layoutOSC._rightStick { return }
-                            layer.position = CGPoint(
-                                x: oldPosition.x * scaleX,
-                                y: oldPosition.y * scaleY
-                            )
-                        }, completion: nil)
+                let legacyHistory = layoutOSC.layoutChanges.compactMap { $0 as? OnScreenButtonState }
+                    .map { ($0, $0.position) }
+                let layers = layoutOSC.oscButtonLayerPool.compactMap { $0 as? CALayer }
+                    .filter { $0 != self.layoutOSC._leftStick && $0 != self.layoutOSC._rightStick }
+                    .map { ($0, $0.position) }
+                let updateLegacy: (Bool) -> Void = { scaled in
+                    for (state, position) in legacyHistory {
+                        state.position = scaled
+                            ? CGPoint(x: position.x * scaleX, y: position.y * scaleY) : position
+                    }
+                    for (layer, position) in layers {
+                        layer.position = scaled
+                            ? CGPoint(x: position.x * scaleX, y: position.y * scaleY) : position
                     }
                 }
+                let registered = coordinator.animate(alongsideTransition: { _ in
+                    updateLegacy(true)
+                }, completion: { context in
+                    if context.isCancelled { updateLegacy(false) }
+                })
+                if !registered { updateLegacy(true) }
             }
         }
 

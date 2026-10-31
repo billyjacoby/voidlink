@@ -485,11 +485,15 @@ class OSCProfilesManager: NSObject {
     }
 
     func normalizeWidgetPosition(_ position: CGPoint) -> CGPoint {
+        normalizeWidgetPosition(position, in: Self.layoutViewBounds)
+    }
+
+    private func normalizeWidgetPosition(_ position: CGPoint, in bounds: CGRect) -> CGPoint {
         var normalizedPosition = position
         // let originalPosition = position
-        if abs(position.x) > 1.0, abs(position.y) > 1.0 {
-            normalizedPosition.x = position.x / Self.layoutViewBounds.size.width
-            normalizedPosition.y = position.y / Self.layoutViewBounds.size.height
+        if abs(position.x) > 1.0, abs(position.y) > 1.0, bounds.width > 0, bounds.height > 0 {
+            normalizedPosition.x = position.x / bounds.width
+            normalizedPosition.y = position.y / bounds.height
         }
         // NSLog("layoutToolView bounds: %f, %f", Self.layoutViewBounds.size.width, Self.layoutViewBounds.size.height)
         // NSLog("position: %f, %f, denormalized position: %f, %f", normalizedPosition.x, normalizedPosition.y, originalPosition.x, originalPosition.y)
@@ -537,7 +541,8 @@ class OSCProfilesManager: NSObject {
 
         widgetSizeTransition = .keepWidgetSize
         for widgetView in OnScreenWidgetView.mapping.values {
-            let normalizedPosition = normalizeWidgetPosition(widgetView.storedCenter)
+            let normalizedPosition = widgetView.transitionProfileNormalizedCenter
+                ?? normalizeWidgetPosition(widgetView.storedCenter, in: widgetView.sizeReferenceViewportBounds)
             let buttonState = OnScreenButtonState(buttonName: widgetView.cmdString, buttonType: 1, andPosition: normalizedPosition)
             buttonState.alias = widgetView.widgetLabel
             buttonState.sequence = widgetView.sequence
@@ -590,28 +595,31 @@ class OSCProfilesManager: NSObject {
     }
 
     private func getReferenceLen(for widget: OnScreenWidgetView) -> CGFloat {
-        let layoutBounds = widget.superview?.bounds ?? Self.layoutViewBounds
-        let screenWidthInPoints = max(layoutBounds.width, 1)
-        let screenHeightInPoints = max(layoutBounds.height, 1)
-        let longSideLen = max(screenWidthInPoints, screenHeightInPoints)
-
-        if widgetSizeTransition == .transitionWithOrientation {
-            return screenWidthInPoints
-        }
-        return longSideLen
+        widget.sizeReferenceLength
     }
 
     private func normalizeSizeWidthFactor(with widget: OnScreenWidgetView) -> CGFloat {
-        widget.usesPortraitMenuLayout ? widget.widthFactor : widget.bounds.size.width / getReferenceLen(for: widget) * 10000
+        // Keep saved normalized factors exact; rounding to even presentation pixels
+        // (or laying out a portrait menu) must not slowly rewrite profile geometry.
+        if widget.widthFactor > 10 { return widget.widthFactor }
+        let referenceLen = getReferenceLen(for: widget)
+        guard referenceLen > 0 else { return widget.widthFactor }
+        return widget.profileSize.width / referenceLen * 10000
     }
 
     private func normalizeSizeHeightFactor(with widget: OnScreenWidgetView) -> CGFloat {
-        widget.usesPortraitMenuLayout ? widget.heightFactor : widget.bounds.size.height / getReferenceLen(for: widget) * 10000
+        if widget.heightFactor > 10 { return widget.heightFactor }
+        let referenceLen = getReferenceLen(for: widget)
+        guard referenceLen > 0 else { return widget.heightFactor }
+        return widget.profileSize.height / referenceLen * 10000
     }
 
     private func normalizeComponentSizeFactor(with widget: OnScreenWidgetView) -> CGFloat {
         if widget.isStickWheel || widget.isDisplacementBasedStickPad {
-            return widget.denormalizedComponentSizeFactor * widget.baselineDiameter / getReferenceLen(for: widget) * 10000
+            if widget.componentSizeFactor > 10 { return widget.componentSizeFactor }
+            let referenceLen = getReferenceLen(for: widget)
+            guard referenceLen > 0 else { return widget.componentSizeFactor }
+            return widget.denormalizedComponentSizeFactor * widget.baselineDiameter / referenceLen * 10000
         }
         return 1
     }

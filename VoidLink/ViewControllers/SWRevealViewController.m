@@ -114,6 +114,7 @@ static CGFloat scaledValue( CGFloat v1, CGFloat min2, CGFloat max2, CGFloat min1
         _frontView = [[UIView alloc] initWithFrame:bounds];
         _frontView.autoresizingMask = UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
         _frontView.userInteractionEnabled = YES;
+        _frontView.backgroundColor = ThemeManager.hostViewBackgroundColor;
 
         [self reloadShadow];
 
@@ -154,6 +155,7 @@ static CGFloat scaledValue( CGFloat v1, CGFloat min2, CGFloat max2, CGFloat min1
 - (void)setupRearNavView {
     // 初始化 rearNavView
     _rearNavView = [[UIView alloc] init];
+    _rearNavView.hidden = YES;
     _safeAreaPadding = [[UIView alloc] init];
     _rearNavView.translatesAutoresizingMaskIntoConstraints = NO;
     _safeAreaPadding.translatesAutoresizingMaskIntoConstraints = NO;
@@ -881,7 +883,8 @@ const int FrontViewPositionNone = 0xff;
 }
 
 - (void)updateTheme {
-    _contentView.backgroundColor = ThemeManager.menuBackgroundColor;
+    _contentView.backgroundColor = ThemeManager.hostViewBackgroundColor;
+    _contentView.frontView.backgroundColor = ThemeManager.hostViewBackgroundColor;
     _contentView.rearNavView.backgroundColor = ThemeManager.menuBackgroundColor;
     _contentView.safeAreaPadding.backgroundColor = ThemeManager.menuBackgroundColor;
     _separatorLine.backgroundColor = ThemeManager.separatorColor;
@@ -947,7 +950,10 @@ const int FrontViewPositionNone = 0xff;
     
     _separatorLine.hidden = _frontViewPosition == FrontViewPositionLeft;
     
-    _contentView.rearNavView.hidden = _frontViewPosition == FrontViewPositionLeft;
+    // Keep covering the menu until its closing animation completes.
+    if (_frontViewPosition != FrontViewPositionLeft) {
+        _contentView.rearNavView.hidden = NO;
+    }
     
     if(_frontViewPosition == FrontViewPositionLeft && currentMenuMode == RemoveSettingItem){
         [self doneRemoveSettingItemSelected];
@@ -2027,6 +2033,7 @@ const int FrontViewPositionNone = 0xff;
     
     void (^completion)(BOOL) = ^(BOOL finished)
     {
+        self->_contentView.rearNavView.hidden = self->_frontViewPosition == FrontViewPositionLeft;
         rearDeploymentCompletion();
         rightDeploymentCompletion();
         frontDeploymentCompletion();
@@ -2178,8 +2185,10 @@ const int FrontViewPositionNone = 0xff;
     BOOL appear = (_rearViewPosition <= FrontViewPositionLeft || _rearViewPosition == FrontViewPositionNone) && newPosition > FrontViewPositionLeft;
     BOOL disappear = newPosition <= FrontViewPositionLeft && (_rearViewPosition > FrontViewPositionLeft && _rearViewPosition != FrontViewPositionNone);
     
-    if ( appear )
+    if ( appear ) {
         [_contentView prepareRearViewForPosition:newPosition];
+        _contentView.rearNavView.hidden = NO;
+    }
     
     _rearViewPosition = newPosition;
     

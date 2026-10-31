@@ -148,17 +148,22 @@ import ObjectiveC.runtime
     
     @objc public var componentSizeFactor: CGFloat = 2.88 {
         didSet{
-            if self.isStickWheel {
-                self.setupStickWheelLayers()
-            }
-            if self.isDisplacementBasedStickPad {
-                stickThumbSize = self.getDiameter(lengthFactor: self.componentSizeFactor)/4
-                self.denormalizedComponentSizeFactor = stickThumbSize*4/baselineDiameter
-                stickAnchorLayer.removeFromSuperlayer()
-                stickThumb.removeFromSuperlayer()
-                self.showStickIndicator()
-                self.updateStickIndicator()
-            }
+            guard sizeReferenceLength > 0 else { return }
+            updateComponentSize()
+        }
+    }
+
+    private func updateComponentSize() {
+        if self.isStickWheel {
+            self.setupStickWheelLayers()
+        }
+        if self.isDisplacementBasedStickPad {
+            stickThumbSize = self.getDiameter(lengthFactor: self.componentSizeFactor)/4
+            self.denormalizedComponentSizeFactor = stickThumbSize*4/baselineDiameter
+            stickAnchorLayer.removeFromSuperlayer()
+            stickThumb.removeFromSuperlayer()
+            self.showStickIndicator()
+            self.updateStickIndicator()
         }
     }
 
@@ -847,12 +852,9 @@ import ObjectiveC.runtime
     }
     
     @objc public func resizeWidgetView(){
-        guard let superview = superview else { return }
+        guard let superview = superview, sizeReferenceLength > 0 else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        
-        // Deactivate existing constraints if necessary
-        NSLayoutConstraint.deactivate(self.constraints)
         
         // To resize the button, we must set this to false temporarily
         translatesAutoresizingMaskIntoConstraints = false
@@ -947,20 +949,242 @@ import ObjectiveC.runtime
         }
     }
     
-    // 仅在加载控件时调用
-    private var widgetViewportSize: CGSize {
-        let size = (superview ?? window)?.bounds.size ?? .zero
-        return CGSize(width: max(size.width, 1), height: max(size.height, 1))
+    // Loading, resizing and serialization must use the same overlay viewport,
+    // not the video viewport (which may be zoomed, portrait-offset or external).
+    private var viewportSizeOverride: CGSize?
+    private var viewportTransitionID = UUID()
+    // A save triggered mid-transition must serialize the stable source layout,
+    // including when UIKit subsequently cancels or replaces that transition.
+    private(set) var transitionProfileNormalizedCenter: CGPoint?
+    private var isUpdatingViewportGeometry = false
+    private var sizingConstraints: [NSLayoutConstraint] = []
+
+    var sizeReferenceViewportBounds: CGRect {
+        CGRect(origin: .zero, size: viewportSizeOverride ?? superview?.bounds.size ?? .zero)
     }
 
+    var sizeReferenceLength: CGFloat {
+        let size = sizeReferenceViewportBounds.size
+        if sizeReference == WidgetSizeReference.longSide.rawValue { return max(size.width, size.height) }
+        if sizeReference == WidgetSizeReference.shortSide.rawValue { return min(size.width, size.height) }
+        return size.width
+    }
+
+    // Neither the docked sliver nor the runtime portrait menu is saved geometry.
+    var profileSize: CGSize {
+        if (autoDockIsDocked || usesPortraitMenuLayout), autoDockOriginalBoundsSize != .zero {
+            return autoDockOriginalBoundsSize
+        }
+        return bounds.size
+    }
+
+    /// Retain controls and input state while updating viewport-dependent geometry.
+    @objc(transitionWidgetsInView:toSize:coordinator:)
+    static func transitionWidgets(in view: UIView, to size: CGSize,
+                                  coordinator: UIViewControllerTransitionCoordinator) {
+        let oldSize = view.bounds.size
+        guard oldSize.width > 0, oldSize.height > 0, size.width > 0, size.height > 0 else { return }
+        let widgets = mapping.values.filter { $0.superview === view }
+        let id = UUID()
+        let updatingEditor = editMode
+        let origins = widgets.map {
+            ($0, $0.usesPortraitMenuLayout ? $0.storedCenter : $0.center,
+             $0.storedCenter, $0.initialCenter, $0.layoutChanges)
+        }
+        for widget in widgets {
+            if widget.transitionProfileNormalizedCenter == nil {
+                widget.transitionProfileNormalizedCenter = CGPoint(
+                    x: widget.storedCenter.x / oldSize.width,
+                    y: widget.storedCenter.y / oldSize.height)
+            }
+            widget.viewportTransitionID = id
+            if !updatingEditor, widget.autoDockEnabled {
+                widget.autoDockIdleDuration = max(widget.autoDockIdleDuration, 2.0)
+                widget.autoDockStopCountdown()
+            }
+        }
+        let update: (CGSize, TimeInterval, UIView.AnimationCurve) -> Void = { target, duration, curve in
+            let scale = CGSize(width: target.width / oldSize.width, height: target.height / oldSize.height)
+            // Compute presentation-only menu frames using the target viewport before
+            // resizing any control. Saved centers scale independently of those frames.
+            for (widget, _, storedCenter, _, _) in origins where widget.viewportTransitionID == id {
+                guard widget.superview === view else { continue }
+                widget.viewportSizeOverride = target
+                widget.storedCenter = CGPoint(x: storedCenter.x * scale.width, y: storedCenter.y * scale.height)
+            }
+            refreshPortraitMenuLayout(resizingWidgets: false)
+            for (widget, center, storedCenter, initialCenter, history) in origins where widget.viewportTransitionID == id {
+                guard widget.superview === view else { continue }
+                if updatingEditor {
+                    widget.initialCenter = CGPoint(x: initialCenter.x * scale.width, y: initialCenter.y * scale.height)
+                    widget.layoutChanges = history.map {
+                        CGPoint(x: $0.x * scale.width, y: $0.y * scale.height)
+                    }
+                }
+                widget.updateViewportGeometry(
+                    to: target,
+                    center: CGPoint(x: center.x * scale.width, y: center.y * scale.height),
+                    storedCenter: CGPoint(x: storedCenter.x * scale.width, y: storedCenter.y * scale.height),
+                    duration: duration, curve: curve)
+            }
+        }
+        let finish: () -> Void = {
+            for widget in widgets where widget.viewportTransitionID == id {
+                widget.viewportSizeOverride = nil
+                widget.transitionProfileNormalizedCenter = nil
+                guard !updatingEditor, widget.superview === view, widget.autoDockEnabled else { continue }
+                // Match the existing resize behavior: bring docked launchers back
+                // after rotation, without allowing stale transitions to restore them.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak widget, weak view] in
+                    guard let widget, let view, widget.superview === view,
+                          widget.viewportTransitionID == id, widget.autoDockEnabled,
+                          !widget.touchBegan, widget.activeTouchesCount == 0 else { return }
+                    if widget.autoDockIsDocked {
+                        OnScreenWidgetView.autoDockRestoreInitByViewResize = true
+                    }
+                    widget.restoreFromAutoDock(animated: true)
+                }
+            }
+            refreshPortraitMenuLayout()
+        }
+        let registered = coordinator.animate(alongsideTransition: { context in
+            update(size, context.isAnimated ? context.transitionDuration : 0, context.completionCurve)
+        }, completion: { context in
+            if context.isCancelled { update(oldSize, 0, context.completionCurve) }
+            finish()
+        })
+        if !registered {
+            update(size, 0, .linear)
+            finish()
+        }
+    }
+
+    // Semantic keys survive setup routines replacing SVG/shape layers in place.
+    private var viewportGeometryLayers: [String: CALayer] {
+        var result: [String: CALayer] = ["widget": layer]
+        let roots: [CALayer] = [buttonDownVisualEffectLayer, l3r3Indicator, anchorBall,
+                               upIndicator, downIndicator, leftIndicator, rightIndicator,
+                               sprintKeyThresholdPreviewLayer, walkKeyThresholdPreviewLayer,
+                               stickWheelAxis, stickWheelLayer, stickWheelLayerSmall,
+                               sprintSign, walkSign, stickAnchorLayer, stickThumb, labelStackView.layer]
+        func append(_ layer: CALayer, key: String) {
+            result[key] = layer
+            for (index, child) in (layer.sublayers ?? []).enumerated() {
+                append(child, key: "\(key).\(index)")
+            }
+        }
+        for (index, root) in roots.enumerated() where root.superlayer != nil {
+            append(root, key: "detail\(index)")
+        }
+        return result
+    }
+
+    private struct ViewportLayerState {
+        let geometry: [String: Any]
+        let hidden: Bool
+        let opacity: Float
+        let transform: CATransform3D
+        let borderColor: CGColor?
+
+        init(_ layer: CALayer) {
+            let visible = layer.presentation() ?? layer
+            var values: [String: Any] = [
+                "bounds": NSValue(cgRect: visible.bounds), "position": NSValue(cgPoint: visible.position),
+                "cornerRadius": visible.cornerRadius, "borderWidth": visible.borderWidth,
+                "transform": NSValue(caTransform3D: visible.transform)
+            ]
+            if let shape = visible as? CAShapeLayer {
+                if let path = shape.path { values["path"] = path }
+                values["lineWidth"] = shape.lineWidth
+            }
+            geometry = values
+            hidden = layer.isHidden
+            opacity = layer.opacity
+            transform = layer.transform
+            borderColor = layer.borderColor
+        }
+    }
+
+    private func updateViewportGeometry(to size: CGSize, center targetCenter: CGPoint,
+                                        storedCenter targetStoredCenter: CGPoint,
+                                        duration: TimeInterval, curve: UIView.AnimationCurve) {
+        layoutIfNeeded()
+        let previousLayers = viewportGeometryLayers
+        let previous = previousLayers.mapValues { ViewportLayerState($0) }
+        let oldBounds = bounds.size
+        let labelOpacity = label.alpha
+        let cmdOpacity = cmdLabel.alpha
+        viewportSizeOverride = size
+        superViewWidth = size.width
+        superViewHeight = size.height
+        storedCenter = targetStoredCenter
+        isUpdatingViewportGeometry = true
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        resizeWidgetView()
+        updateComponentSize()
+        center = usesPortraitMenuLayout ? presentationCenter : targetCenter
+        if autoDockIsDocked {
+            autoDockApplyTemporarySize()
+            frame = autoDockTargetFrame(in: CGRect(origin: .zero, size: size))
+            autoDockDockedCenter = center
+        }
+        layoutIfNeeded()
+        label.alpha = labelOpacity
+        cmdLabel.alpha = cmdOpacity
+        let layers = viewportGeometryLayers
+        for (key, newLayer) in layers {
+            guard let state = previous[key] else { continue }
+            if key != "widget" {
+                newLayer.isHidden = state.hidden
+                newLayer.opacity = state.opacity
+                // Only wheel roots contain input rotation. SVG descendants contain
+                // newly computed scale transforms which must retain their new values.
+                if newLayer === stickWheelLayer || newLayer === stickWheelLayerSmall {
+                    newLayer.transform = state.transform
+                }
+                newLayer.borderColor = state.borderColor
+            }
+            for property in state.geometry.keys {
+                newLayer.removeAnimation(forKey: "viewport.\(property)")
+            }
+        }
+        if !l3r3Indicator.isHidden, oldBounds.width > 0, oldBounds.height > 0,
+           let old = previousLayers.first(where: { $0.value === l3r3Indicator }),
+           let position = previous[old.key]?.geometry["position"] as? NSValue {
+            let point = position.cgPointValue
+            l3r3Indicator.position = CGPoint(x: point.x * bounds.width / oldBounds.width,
+                                            y: point.y * bounds.height / oldBounds.height)
+        }
+        CATransaction.commit()
+        isUpdatingViewportGeometry = false
+
+        // Geometry builders disable implicit actions; explicitly match UIKit's
+        // transition timeline instead of rebuilding controls or restarting input.
+        guard duration > 0 else { return }
+        let timing: CAMediaTimingFunctionName
+        switch curve {
+        case .easeIn: timing = .easeIn
+        case .easeOut: timing = .easeOut
+        case .linear: timing = .linear
+        default: timing = .easeInEaseOut
+        }
+        for (key, newLayer) in layers {
+            guard let state = previous[key] else { continue }
+            for (property, value) in state.geometry {
+                let animation = CABasicAnimation(keyPath: property)
+                animation.fromValue = value
+                animation.toValue = newLayer.value(forKeyPath: property)
+                animation.duration = duration
+                animation.timingFunction = CAMediaTimingFunction(name: timing)
+                newLayer.add(animation, forKey: "viewport.\(property)")
+            }
+        }
+    }
+
+    // 仅在加载控件时调用
     private func denormalizeSize(sizeFactor:CGFloat) -> CGFloat {
-        let viewport = widgetViewportSize
-        let longSideLen = max(viewport.width, viewport.height)
-        let shortSideLen = min(viewport.width, viewport.height)
-        
-        var referenceLen = viewport.width
-        if(self.sizeReference == WidgetSizeReference.longSide.rawValue) {referenceLen = longSideLen}
-        if(self.sizeReference == WidgetSizeReference.shortSide.rawValue) {referenceLen = shortSideLen}
+        let referenceLen = sizeReferenceLength
         
         // return CGFloat(Int(sizeFactor/10000*screenWidthInPoints/2)*2);
         // print("referenceLen \(referenceLen), \(CACurrentMediaTime())")
@@ -968,17 +1192,18 @@ import ObjectiveC.runtime
     }
     
     private func getBaselineLenths(){
-        let viewport = widgetViewportSize
+        let viewport = sizeReferenceViewportBounds.size
         let longSideLen = max(viewport.width, viewport.height)
         let shortSideLen = min(viewport.width, viewport.height)
+        let shortToLongRatio = longSideLen > 0 ? shortSideLen/longSideLen : 1
         
-        baselineDiameter = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 60 : 60*shortSideLen/longSideLen
+        baselineDiameter = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 60 : 60*shortToLongRatio
         
-        baselineWidth = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 70 : 70*shortSideLen/longSideLen
-        baselineHeight = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 65 : 65*shortSideLen/longSideLen
+        baselineWidth = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 70 : 70*shortToLongRatio
+        baselineHeight = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 65 : 65*shortToLongRatio
         
-        baselineWidthLargeSquare = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 170 : 170*shortSideLen/longSideLen
-        baselineHeightLargeSquare = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 150 : 150*shortSideLen/longSideLen
+        baselineWidthLargeSquare = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 170 : 170*shortToLongRatio
+        baselineHeightLargeSquare = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 150 : 150*shortToLongRatio
     }
     
     private func getDiameter(lengthFactor:CGFloat) -> CGFloat {
@@ -1013,12 +1238,15 @@ import ObjectiveC.runtime
     
 
     private func changeAndActivateContraints(){
+        NSLayoutConstraint.deactivate(sizingConstraints)
+        sizingConstraints.removeAll()
 
         if self.shape == "round"{ // we'll make custom osc buttons round & smaller
             let diameter = getDiameter(lengthFactor: self.widthFactor)
-            NSLayoutConstraint.activate([
+            sizingConstraints.append(contentsOf: [
                 self.widthAnchor.constraint(equalToConstant: diameter),
                 self.heightAnchor.constraint(equalToConstant: diameter),])
+            autoDockOriginalBoundsSize = CGSize(width: diameter, height: diameter)
             // 实时调整大小时isNormalized 为 false。加载数据时 isNormalized 为 true
             // baselineDiameter 仅在 实时调整大小时生效，从存储恢复时总是会恢复denormalizeSize()尺寸
             self.denormalizedWidthFactor = diameter/baselineDiameter;
@@ -1029,7 +1257,7 @@ import ObjectiveC.runtime
             let widgetSize = getRecSize(widthFactor: self.widthFactor, heightFactor: self.heightFactor)
             autoDockOriginalBoundsSize = widgetSize
             let displaySize = OnScreenWidgetView.editMode ? widgetSize : (portraitMenuFrame?.size ?? widgetSize)
-            NSLayoutConstraint.activate([
+            sizingConstraints.append(contentsOf: [
                 self.widthAnchor.constraint(equalToConstant: displaySize.width),
                 self.heightAnchor.constraint(equalToConstant: displaySize.height),])
             self.denormalizedWidthFactor = widgetSize.width/baselineWidth;
@@ -1037,14 +1265,15 @@ import ObjectiveC.runtime
         }
         if self.shape == "largeSquare" { // override all shape strings
             let widgetSize = getLargeRecSize(widthFactor: self.widthFactor, heightFactor: self.heightFactor)
-            NSLayoutConstraint.activate([
+            sizingConstraints.append(contentsOf: [
                 self.widthAnchor.constraint(equalToConstant:widgetSize.width),
                 self.heightAnchor.constraint(equalToConstant:widgetSize.height),])
+            autoDockOriginalBoundsSize = widgetSize
             self.denormalizedWidthFactor = widgetSize.width/baselineWidthLargeSquare;
             self.denormalizedHeightFactor = widgetSize.height/baselineHeightLargeSquare;
         }
         
-        NSLayoutConstraint.activate(self.shape == "round" ? [
+        sizingConstraints.append(contentsOf: self.shape == "round" ? [
             labelStackView.leadingAnchor.constraint(equalTo: self.leadingAnchor, constant: 13), // set up label size contrain within UIView
             labelStackView.trailingAnchor.constraint(equalTo: self.trailingAnchor, constant: -13),
             labelStackView.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -1056,6 +1285,8 @@ import ObjectiveC.runtime
             labelStackView.bottomAnchor.constraint(lessThanOrEqualTo: self.bottomAnchor, constant: -8),
             labelStackView.centerXAnchor.constraint(equalTo: centerXAnchor),
             labelStackView.centerYAnchor.constraint(equalTo: centerYAnchor),])
+
+        NSLayoutConstraint.activate(sizingConstraints)
         
         if self.shape != "round"{
             self.setSquareWidgetCornerRadius()
@@ -1352,7 +1583,7 @@ import ObjectiveC.runtime
         
         center = presentationCenter //anchor the center while resizing self
         
-        hideAllHighlightLayersOfAllWidgets(selfIncluded: false)
+        if !isUpdatingViewportGeometry { hideAllHighlightLayersOfAllWidgets(selfIncluded: false) }
         if widgetType == WidgetTypeEnum.button {setupButtonDownVisualEffectLayer()}
         if CommandManager.directionPads.contains(touchPadString) {setupLrudDirectionIndicatorlayers()}
         if CommandManager.stickTouchPads.contains(touchPadString) {setupL3R3Indicator()}
@@ -4018,14 +4249,20 @@ import ObjectiveC.runtime
     /// Recompute after the overlay container's bounds/safe area change. The saved
     /// centers continue to scale with the viewport and remain the landscape source.
     @objc static func refreshPortraitMenuLayout() {
+        refreshPortraitMenuLayout(resizingWidgets: true)
+    }
+
+    private static func refreshPortraitMenuLayout(resizingWidgets: Bool) {
         var frames: [Int16: CGRect] = [:]
 #if !os(tvOS)
         if !editMode {
             for folder in mapping.values where folder.oscProfile.name == "Default"
                 && folder.parentSequence == -1 && folder.cmdString == "LABELEDFOLDER"
                 && folder.widgetLabel == "=widgets" && folder.shape == "square" {
-                guard let host = folder.superview, host.bounds.height > host.bounds.width else { continue }
-                let area = host.bounds.inset(by: host.safeAreaInsets).insetBy(dx: 8, dy: 8)
+                guard let host = folder.superview else { continue }
+                let viewport = folder.sizeReferenceViewportBounds
+                guard viewport.height > viewport.width else { continue }
+                let area = viewport.inset(by: host.safeAreaInsets).insetBy(dx: 8, dy: 8)
                 guard area.width >= 44, area.height >= 44 else { continue }
 
                 let originalSize = folder.getRecSize(widthFactor: folder.widthFactor, heightFactor: folder.heightFactor)
@@ -4076,8 +4313,14 @@ import ObjectiveC.runtime
             let newFrame = frames[widget.sequence]
             let changed = widget.portraitMenuFrame != newFrame
             widget.portraitMenuFrame = newFrame
+            guard resizingWidgets else { continue }
             if changed && !widget.autoDockIsDocked {
-                widget.resizeWidgetView()
+                let override = widget.viewportSizeOverride
+                widget.updateViewportGeometry(to: widget.sizeReferenceViewportBounds.size,
+                                              center: widget.storedCenter,
+                                              storedCenter: widget.storedCenter,
+                                              duration: 0, curve: .linear)
+                widget.viewportSizeOverride = override
             } else if newFrame != nil && !widget.isHidden && !widget.autoDockIsDocked {
                 widget.center = widget.presentationCenter
             }
@@ -4427,6 +4670,16 @@ import ObjectiveC.runtime
     
     @objc static func getMaxSequence() -> Int16{
         return OnScreenWidgetView.mapping.keys.max() ?? -1
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, sizeReferenceLength > 0 else { return }
+        // Resolve factors assigned while the workspace was detached.
+        let override = viewportSizeOverride
+        updateViewportGeometry(to: sizeReferenceViewportBounds.size, center: center,
+                               storedCenter: storedCenter, duration: 0, curve: .linear)
+        viewportSizeOverride = override
     }
 
     override func didMoveToSuperview() {

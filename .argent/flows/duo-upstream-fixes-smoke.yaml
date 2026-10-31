@@ -1,0 +1,84 @@
+# Run on a Duo simulator starting on its closed cover panel.
+# This changes the simulator's saved resolution preset to 1080p.
+# Exact resolution labels use AX waits intentionally: the native flow tree
+# exposes the row container but not its combined id/text leaf.
+steps:
+  - echo: Launch updated VoidLink; expect host navigation to remain available.
+  - launch: com.billyjacoby.voidlink
+  - tool: await-ui-element
+    args:
+      condition: visible
+      selector:
+        text: Add Host
+        role: button
+  - tool: await-ui-element
+    args:
+      condition: visible
+      selector:
+        text: Add Host
+        role: button
+  - tool: await-ui-element
+    args:
+      condition: visible
+      selector:
+        text: Add Host
+        role: button
+  - echo: Open Settings from host navigation; expect video settings and resolution
+      selector.
+  - await: { idle: true }
+  - tap:
+      id: sidebar.left
+  - tool: await-ui-element
+    args:
+      condition: visible
+      selector:
+        identifier: resolutionSelectorStack
+  - await: { idle: true }
+  - echo: Unfold Duo with Settings open; expect resolution controls to remain usable
+      on inner panel.
+  - fold: open
+  - tool: await-ui-element
+    args:
+      condition: visible
+      selector:
+        identifier: resolutionSelectorStack
+  - await: { idle: true }
+  - echo: Select fixed 1080p then fold; fixed preset should remain 1920 by 1080
+      rather than adopt panel dimensions.
+  - tap:
+      text: 1080p
+  - tool: await-ui-element
+    args:
+      condition: visible
+      selector:
+        identifier: resolutionSelectorStack
+        text: 1920 × 1080
+  - fold: closed
+  - tool: await-ui-element
+    args:
+      condition: visible
+      selector:
+        identifier: resolutionSelectorStack
+        text: 1920 × 1080
+  - await: { idle: true }
+  - echo: Close Settings to persist the selected fixed preset, then reopen and
+      verify 1080p remains selected.
+  - tap:
+      id: sidebar.left
+  - tool: await-ui-element
+    args:
+      condition: visible
+      selector:
+        text: Add Host
+        role: button
+  - await: { idle: true }
+  - tap:
+      id: sidebar.left
+  - tool: await-ui-element
+    args:
+      condition: visible
+      selector:
+        identifier: resolutionSelectorStack
+        text: 1920 × 1080
+      bundleId: com.billyjacoby.voidlink
+  - await: { idle: true }
