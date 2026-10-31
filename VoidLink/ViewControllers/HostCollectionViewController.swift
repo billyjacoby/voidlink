@@ -196,6 +196,16 @@ class HostCollectionViewController: UICollectionViewController, UICollectionView
         } else {
             collectionViewHeightConstraint?.constant = contentHeight
         }
+        
+        if PublicUtils.isTVOS {
+            flowLayout.sectionInset = UIEdgeInsets(top: PublicUtils.tvOS26Aavailable ? 43 : 30, left: horizontalPadding, bottom: 0, right: horizontalPadding)
+            return
+        }
+        
+        if PublicUtils.isFoldableIPhone {
+            flowLayout.sectionInset = UIEdgeInsets(top: 20, left: horizontalPadding, bottom: 0, right: horizontalPadding)
+            return
+        }
 
         if PublicUtils.isFoldableIPhone {
             flowLayout.sectionInset = UIEdgeInsets(top: 20, left: horizontalPadding, bottom: 0, right: horizontalPadding)
@@ -204,7 +214,9 @@ class HostCollectionViewController: UICollectionViewController, UICollectionView
 
         switch numberOfRowsInCollectionView() {
         case 1:
-            flowLayout.sectionInset = UIEdgeInsets(top: 50, left: horizontalPadding, bottom: 0, right: horizontalPadding)
+            flowLayout.sectionInset = UIEdgeInsets(
+                top: (PublicUtils.liquidGlassEnabled && PublicUtils.isIPhone) ? 35 : 50,
+            left: horizontalPadding, bottom: 0, right: horizontalPadding)
         case 2:
             flowLayout.sectionInset = UIEdgeInsets(top: 17, left: horizontalPadding, bottom: 0, right: horizontalPadding)
         default:

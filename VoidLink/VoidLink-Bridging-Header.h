@@ -4,15 +4,22 @@
 
 #include <Limelight.h>
 #include <moonlight_haptics/authored_haptics.h>
-#import "SettingsViewController.h"
+#if !TARGET_OS_TV
+#import "CustomEdgeSlideGestureRecognizer.h"
+#endif
 #import "MainFrameViewController.h"
 #import "LoadingFrameViewController.h"
 #import "StreamFrameViewController.h"
+#import "SceneDelegate.h"
 #import "Connection.h"
 #import "ControllerSupport.h"
 #import "OnScreenControls.h"
+#import "NativeTouchPointer.h"
 #import "OnScreenButtonState.h"
-#import "DataManager.h"
+#import "AppDelegate.h"
+#import "TemporaryHost.h"
+#import "TemporaryApp.h"
+#import "Settings+CoreDataClass.h"
 #import "AppAssetManager.h"
 #import "LocalizationHelper.h"
 #import "OSCProfile.h"

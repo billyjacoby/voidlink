@@ -28,10 +28,12 @@
 
 @interface StreamFrameViewController : GCEventViewController <ConnectionCallbacks, ControllerSupportDelegate, UserInteractionDelegate, UIScrollViewDelegate, AVPictureInPictureControllerDelegate>
 #else
-@interface StreamFrameViewController : UIViewController <ConnectionCallbacks, ControllerSupportDelegate, UserInteractionDelegate, UIScrollViewDelegate, AVPictureInPictureControllerDelegate>
+@import GameController;
 
+@interface StreamFrameViewController : GCEventViewController <ConnectionCallbacks, ControllerSupportDelegate, UserInteractionDelegate, UIScrollViewDelegate, AVPictureInPictureControllerDelegate>
 #endif
 @property (nonatomic, strong) StreamManager* streamMan;
+@property (nonatomic, strong) StreamView* streamView;
 @property (nonatomic) StreamConfiguration* streamConfig;
 @property (nonatomic, strong) AVPictureInPictureController *pipController API_AVAILABLE(ios(9.0));
 @property (nonatomic, strong) AVPictureInPictureControllerContentSource *pipContentSource API_AVAILABLE(ios(15.0)); // Needed for iOS 15+ layer-based PiP
@@ -66,9 +68,16 @@
 - (void)updateMagnifierViewportMetrics;
 - (void)setMagnifierViewportInteractionEnabled:(BOOL)enabled;
 - (void)resetMagnifierStreamViewWithAnimated:(BOOL)animated;
+- (CGPoint)restingStreamViewOffset;
+- (void)updatePortraitStreamOffsetPercent:(CGFloat)percent NS_SWIFT_NAME(updatePortraitStreamOffset(percent:));
+- (CGFloat)portraitStreamOffsetPercent;
+- (CGPoint)persistableMagnifierContentOffset;
+- (void)bringFloatingKeyboardButtonToFront;
 - (void)returnToMainFrame;
+- (void)disconnectRemoteSession;
 - (void)bringUpToolboxMenu;
 - (void)bringUpToolboxMenuWithoutWidgetLayoutTool;
+- (void)remoteTextInputForTvOS;
 - (void)updateOverlayText:(NSString*)text;
 - (void)updateTransientHUDText:(NSString*)text;
 

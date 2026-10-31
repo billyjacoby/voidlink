@@ -9,9 +9,7 @@
 /* Begin PBXBuildFile section */
 		180E6E372E93BFDB0067C73A /* AlertControllerUtil.swift in Sources */ = {isa = PBXBuildFile; fileRef = 180E6E362E93BFDB0067C73A /* AlertControllerUtil.swift */; };
 		1817B61E2E6FD04D000D938D /* SafeTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1817B61D2E6FD04D000D938D /* SafeTimer.swift */; };
-		182760F72E83E2EA00EC1C5C /* DequeModule in Frameworks */ = {isa = PBXBuildFile; productRef = 182760F62E83E2EA00EC1C5C /* DequeModule */; };
-		182760FA2E83E57D00EC1C5C /* DequeModule in Frameworks */ = {isa = PBXBuildFile; productRef = 182760F92E83E57D00EC1C5C /* DequeModule */; };
-		182760FD2E83E68B00EC1C5C /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 182760FC2E83E68B00EC1C5C /* Collections */; };
+		1829CE3F2E2154DF0074A99A /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 1829CE3E2E2154DF0074A99A /* SceneDelegate.m */; };
 		18341A042DEB662C0094E5F2 /* FixedTintImageView.m in Sources */ = {isa = PBXBuildFile; fileRef = 18341A032DEB662C0094E5F2 /* FixedTintImageView.m */; };
 		18416EA42EBB3DCE00AE0124 /* UITouchUtil.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18416EA32EBB3DCE00AE0124 /* UITouchUtil.swift */; };
 		1850C82A2E667E4000845308 /* MicHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1850C8292E667E4000845308 /* MicHandler.swift */; };
@@ -22,7 +20,7 @@
 		1888C1922E24C33100108730 /* AboutViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1888C1912E24C33100108730 /* AboutViewController.swift */; };
 		1888C1932E24C41000108730 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1888C1902E24C2C800108730 /* AboutView.swift */; };
 		188973D32E386A670025E48C /* widgetTemplatesIPhone.bin in Resources */ = {isa = PBXBuildFile; fileRef = 188973D22E386A670025E48C /* widgetTemplatesIPhone.bin */; };
-		18951D1D2EBB6D2300A86E12 /* TouchPadGestureHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18951D1C2EBB6D2300A86E12 /* TouchPadGestureHandler.swift */; };
+		18951D1D2EBB6D2300A86E12 /* RelativeTouchGestureHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18951D1C2EBB6D2300A86E12 /* RelativeTouchGestureHandler.swift */; };
 		189AD29A2DE7446000E24B88 /* HostCollectionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189AD2992DE7446000E24B88 /* HostCollectionViewController.swift */; };
 		18A0EE252EFB9B5A00BA853A /* SVGKit in Frameworks */ = {isa = PBXBuildFile; productRef = 18A0EE242EFB9B5A00BA853A /* SVGKit */; };
 		18A0EE272EFB9B5A00BA853A /* SVGKitSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 18A0EE262EFB9B5A00BA853A /* SVGKitSwift */; };
@@ -106,7 +104,7 @@
 		9897B6A1221260EF00966419 /* VoidController.m in Sources */ = {isa = PBXBuildFile; fileRef = 9897B6A0221260EF00966419 /* VoidController.m */; };
 		98CFB82F1CAD481B0048EF74 /* libmoonlight-common.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 98AB2E841CAD46840089BB98 /* libmoonlight-common.a */; };
 		98D5856D1C0EA79600F6CC00 /* TemporaryHost.m in Sources */ = {isa = PBXBuildFile; fileRef = 98D5856C1C0EA79600F6CC00 /* TemporaryHost.m */; };
-		98D585701C0ED0E800F6CC00 /* TemporarySettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 98D5856F1C0ED0E800F6CC00 /* TemporarySettings.m */; };
+		98D585701C0ED0E800F6CC00 /* TemporarySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D5856F1C0ED0E800F6CC00 /* TemporarySettings.swift */; };
 		A1900E012F9A100100BA853A /* InputAccessoryBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1900E002F9A100100BA853A /* InputAccessoryBar.swift */; };
 		A1B2C3D42F90000100ABCDEF /* AbstractGamepadOverlayWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D32F90000100ABCDEF /* AbstractGamepadOverlayWidgetView.swift */; };
 		A1C0DE012FBC000100000001 /* ControllerNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE002FBC000100000001 /* ControllerNavigator.swift */; };
@@ -123,7 +121,7 @@
 		A70100000000000000000005 /* KeyboardSupport.m in Sources */ = {isa = PBXBuildFile; fileRef = FB1A674C2131E65900507771 /* KeyboardSupport.m */; };
 		A70100000000000000000006 /* Frame.m in Sources */ = {isa = PBXBuildFile; fileRef = 97E20DD92E2164A9000D5DCA /* Frame.m */; };
 		A70100000000000000000007 /* FrameQueue.m in Sources */ = {isa = PBXBuildFile; fileRef = 97E20DDB2E2164A9000D5DCA /* FrameQueue.m */; };
-		A70100000000000000000008 /* TouchPadGestureHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18951D1C2EBB6D2300A86E12 /* TouchPadGestureHandler.swift */; };
+		A70100000000000000000008 /* RelativeTouchGestureHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18951D1C2EBB6D2300A86E12 /* RelativeTouchGestureHandler.swift */; };
 		A70100000000000000000009 /* FloatBuffer.m in Sources */ = {isa = PBXBuildFile; fileRef = 97E20DD72E2164A9000D5DCA /* FloatBuffer.m */; };
 		A7010000000000000000000A /* PaddedLabel.m in Sources */ = {isa = PBXBuildFile; fileRef = 97E20DDD2E2164A9000D5DCA /* PaddedLabel.m */; };
 		A7010000000000000000000B /* BandwidthTracker.m in Sources */ = {isa = PBXBuildFile; fileRef = 97E20DD52E2164A9000D5DCA /* BandwidthTracker.m */; };
@@ -168,7 +166,7 @@
 		A70100000000000000000034 /* LocalizationHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = 84FD0B502C31338D006B5BE5 /* LocalizationHelper.m */; };
 		A70100000000000000000035 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 97E20DE92E216532000D5DCA /* SceneDelegate.m */; };
 		A70100000000000000000036 /* SafeTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1817B61D2E6FD04D000D938D /* SafeTimer.swift */; };
-		A70100000000000000000037 /* SettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FBD3494F19FF2174002D2A60 /* SettingsViewController.m */; };
+		A70100000000000000000037 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD3494F19FF2174002D2A60 /* SettingsViewController.swift */; };
 		A70100000000000000000038 /* SettingsTouchVelocityPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B7A10012FFB000100000001 /* SettingsTouchVelocityPreview.swift */; };
 		A70100000000000000000039 /* NativeTouchPointer.m in Sources */ = {isa = PBXBuildFile; fileRef = 843CC7EF2C1E757D00BBC475 /* NativeTouchPointer.m */; };
 		A7010000000000000000003A /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7113FC2F5A6C65001D852D /* ThemeManager.swift */; };
@@ -194,7 +192,7 @@
 		A7010000000000000000004E /* MetalView.m in Sources */ = {isa = PBXBuildFile; fileRef = 97E20DCA2E21647A000D5DCA /* MetalView.m */; };
 		A7010000000000000000004F /* MetalVideoRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = 97E20DC82E21647A000D5DCA /* MetalVideoRenderer.m */; };
 		A70100000000000000000050 /* ProfileSelectorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4A3A102F0C000100000001 /* ProfileSelectorViewController.swift */; };
-		A70100000000000000000051 /* TemporarySettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 98D5856F1C0ED0E800F6CC00 /* TemporarySettings.m */; };
+		A70100000000000000000051 /* TemporarySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D5856F1C0ED0E800F6CC00 /* TemporarySettings.swift */; };
 		A70100000000000000000053 /* UUIDHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18729EDD2E8BD68800101194 /* UUIDHelper.swift */; };
 		A70100000000000000000054 /* CryptoManager.m in Sources */ = {isa = PBXBuildFile; fileRef = FB89460619F646E200339C8A /* CryptoManager.m */; };
 		A70100000000000000000055 /* ConnectionHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = DC1F5A06206436B20037755F /* ConnectionHelper.m */; };
@@ -213,7 +211,7 @@
 		A70100000000000000000062 /* ControllerSupport.m in Sources */ = {isa = PBXBuildFile; fileRef = FB89460B19F646E200339C8A /* ControllerSupport.m */; };
 		A70100000000000000000063 /* AppAssetResponse.m in Sources */ = {isa = PBXBuildFile; fileRef = FB9AFD3C1A7E111600872C98 /* AppAssetResponse.m */; };
 		A70100000000000000000064 /* AboutViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1888C1912E24C33100108730 /* AboutViewController.swift */; };
-		A70100000000000000000065 /* DataManager.m in Sources */ = {isa = PBXBuildFile; fileRef = FBD349611A0089F6002D2A60 /* DataManager.m */; };
+		A70100000000000000000065 /* DataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD349611A0089F6002D2A60 /* DataManager.swift */; };
 		A70100000000000000000066 /* ImGuiRenderer.mm in Sources */ = {isa = PBXBuildFile; fileRef = 97E20DE62E216510000D5DCA /* ImGuiRenderer.mm */; };
 		A70100000000000000000067 /* InertialScroller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18B317022EE67A39009B62C2 /* InertialScroller.swift */; };
 		A70100000000000000000068 /* UIStackExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AC1EAFA2F922602004EDA80 /* UIStackExtension.swift */; };
@@ -238,8 +236,6 @@
 		A703000000000000000003 /* libxml2.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 9890CF6A203B7EE1006C4B06 /* libxml2.tbd */; };
 		A703000000000000000004 /* libmoonlight-common.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 98AB2E841CAD46840089BB98 /* libmoonlight-common.a */; };
 		A703000000000000000005 /* libavutil.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 98882A092AF60F9000C5A11C /* libavutil.a */; };
-		A703000000000000000006 /* DequeModule in Frameworks */ = {isa = PBXBuildFile; productRef = 182760F62E83E2EA00EC1C5C /* DequeModule */; };
-		A703000000000000000007 /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 182760FC2E83E68B00EC1C5C /* Collections */; };
 		A703000000000000000008 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FB290CF319B2C406004C83CF /* CoreGraphics.framework */; };
 		A703000000000000000009 /* CoreData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FB290CF719B2C406004C83CF /* CoreData.framework */; };
 		A70300000000000000000A /* OpenSSL in Frameworks */ = {isa = PBXBuildFile; productRef = F74BEF9B2C1A705600224667 /* OpenSSL */; };
@@ -253,7 +249,11 @@
 		A703000000000000000012 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9865DC3B2132922E0005B9B9 /* GameController.framework */; };
 		A76B00032FFCC00100000003 /* GameSirG8MFiRumbler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76B00022FFCC00100000002 /* GameSirG8MFiRumbler.swift */; };
 		A76B00052FFCC00100000005 /* ExternalAccessory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A76B00042FFCC00100000004 /* ExternalAccessory.framework */; };
+		A7EC06010000000000000001 /* TrackpadTouchHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7EC06010000000000000002 /* TrackpadTouchHandler.swift */; platformFilter = ios; };
 		B76B00032FFCC00100000003 /* KishiV3ProXLRumbler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B76B00022FFCC00100000002 /* KishiV3ProXLRumbler.swift */; };
+		C0DE5A1E2F80000100000012 /* CursorInertia.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE5A1E2F80000100000011 /* CursorInertia.swift */; };
+		C0DE5A1E2F80000100000013 /* CursorInertia.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE5A1E2F80000100000011 /* CursorInertia.swift */; };
+		C0DE5A1E2F80000100000022 /* FloatingKeyboardButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE5A1E2F80000100000021 /* FloatingKeyboardButton.swift */; };
 		DC1F5A07206436B20037755F /* ConnectionHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = DC1F5A06206436B20037755F /* ConnectionHelper.m */; };
 		F74BEF9C2C1A705600224667 /* OpenSSL in Frameworks */ = {isa = PBXBuildFile; productRef = F74BEF9B2C1A705600224667 /* OpenSSL */; };
 		FB1A674D2131E65900507771 /* KeyboardSupport.m in Sources */ = {isa = PBXBuildFile; fileRef = FB1A674C2131E65900507771 /* KeyboardSupport.m */; };
@@ -297,9 +297,9 @@
 		FB9AFD401A7E127D00872C98 /* AppListResponse.m in Sources */ = {isa = PBXBuildFile; fileRef = FB9AFD3F1A7E127D00872C98 /* AppListResponse.m */; };
 		FBD1C8E21A8AD71400C6703C /* Logger.m in Sources */ = {isa = PBXBuildFile; fileRef = FBD1C8E11A8AD71400C6703C /* Logger.m */; };
 		FBD3494319FC9C04002D2A60 /* AppAssetManager.m in Sources */ = {isa = PBXBuildFile; fileRef = FBD3494219FC9C04002D2A60 /* AppAssetManager.m */; };
-		FBD3495019FF2174002D2A60 /* SettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FBD3494F19FF2174002D2A60 /* SettingsViewController.m */; };
+		FBD3495019FF2174002D2A60 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD3494F19FF2174002D2A60 /* SettingsViewController.swift */; };
 		FBD3495319FF36FB002D2A60 /* SWRevealViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FBD3495219FF36FB002D2A60 /* SWRevealViewController.m */; };
-		FBD349621A0089F6002D2A60 /* DataManager.m in Sources */ = {isa = PBXBuildFile; fileRef = FBD349611A0089F6002D2A60 /* DataManager.m */; };
+		FBD349621A0089F6002D2A60 /* DataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD349611A0089F6002D2A60 /* DataManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -351,13 +351,14 @@
 		1888C1902E24C2C800108730 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		1888C1912E24C33100108730 /* AboutViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutViewController.swift; sourceTree = "<group>"; };
 		188973D22E386A670025E48C /* widgetTemplatesIPhone.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = widgetTemplatesIPhone.bin; path = PresetConfigs/widgetTemplatesIPhone.bin; sourceTree = "<group>"; };
-		18951D1C2EBB6D2300A86E12 /* TouchPadGestureHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchPadGestureHandler.swift; sourceTree = "<group>"; };
+		18951D1C2EBB6D2300A86E12 /* RelativeTouchGestureHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelativeTouchGestureHandler.swift; sourceTree = "<group>"; };
 		189AD2992DE7446000E24B88 /* HostCollectionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostCollectionViewController.swift; sourceTree = "<group>"; };
 		18A0EE2B2EFBCCFD00BA853A /* GraphicUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphicUtils.swift; sourceTree = "<group>"; };
 		18A765BC2ECD51FB004784AA /* ControllerUtil.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerUtil.swift; sourceTree = "<group>"; };
 		18B317022EE67A39009B62C2 /* InertialScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InertialScroller.swift; sourceTree = "<group>"; };
 		18BF141D2E0D7A00009DEE4F /* VoidLink v1.0.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "VoidLink v1.0.xcdatamodel"; sourceTree = "<group>"; };
 		A70400000000000000000001 /* VoidLink v1.1.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "VoidLink v1.1.xcdatamodel"; sourceTree = "<group>"; };
+		A70400000000000000000002 /* VoidLink v1.2.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "VoidLink v1.2.xcdatamodel"; sourceTree = "<group>"; };
 		18D43D7E2F050240008C326F /* PressureCurve.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PressureCurve.swift; sourceTree = "<group>"; };
 		18D43D802F050240008C326F /* PencilTipOffsetCalibrationViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PencilTipOffsetCalibrationViewController.swift; sourceTree = "<group>"; };
 		18E4BCE92E891895000A8657 /* MotionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionHandler.swift; sourceTree = "<group>"; };
@@ -475,8 +476,7 @@
 		98B9CE6C27B2144B00B473C4 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS15.2.sdk/System/Library/Frameworks/AVKit.framework; sourceTree = DEVELOPER_DIR; };
 		98D5856B1C0EA79600F6CC00 /* TemporaryHost.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = TemporaryHost.h; path = Database/TemporaryHost.h; sourceTree = "<group>"; };
 		98D5856C1C0EA79600F6CC00 /* TemporaryHost.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = TemporaryHost.m; path = Database/TemporaryHost.m; sourceTree = "<group>"; };
-		98D5856E1C0ED0E800F6CC00 /* TemporarySettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = TemporarySettings.h; path = Database/TemporarySettings.h; sourceTree = "<group>"; };
-		98D5856F1C0ED0E800F6CC00 /* TemporarySettings.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = TemporarySettings.m; path = Database/TemporarySettings.m; sourceTree = "<group>"; };
+		98D5856F1C0ED0E800F6CC00 /* TemporarySettings.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = TemporarySettings.swift; path = Database/TemporarySettings.swift; sourceTree = "<group>"; };
 		A1900E002F9A100100BA853A /* InputAccessoryBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputAccessoryBar.swift; sourceTree = "<group>"; };
 		A1B2C3D32F90000100ABCDEF /* AbstractGamepadOverlayWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbstractGamepadOverlayWidgetView.swift; sourceTree = "<group>"; };
 		A1C0DE002FBC000100000001 /* ControllerNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerNavigator.swift; sourceTree = "<group>"; };
@@ -491,7 +491,10 @@
 		A7000000000000000002 /* VoidLink TV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "VoidLink TV.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A76B00022FFCC00100000002 /* GameSirG8MFiRumbler.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GameSirG8MFiRumbler.swift; sourceTree = "<group>"; };
 		A76B00042FFCC00100000004 /* ExternalAccessory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExternalAccessory.framework; path = System/Library/Frameworks/ExternalAccessory.framework; sourceTree = SDKROOT; };
+		A7EC06010000000000000002 /* TrackpadTouchHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackpadTouchHandler.swift; sourceTree = "<group>"; };
 		B76B00022FFCC00100000002 /* KishiV3ProXLRumbler.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = KishiV3ProXLRumbler.swift; sourceTree = "<group>"; };
+		C0DE5A1E2F80000100000011 /* CursorInertia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorInertia.swift; sourceTree = "<group>"; };
+		C0DE5A1E2F80000100000021 /* FloatingKeyboardButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingKeyboardButton.swift; sourceTree = "<group>"; };
 		DC1F5A05206436B10037755F /* ConnectionHelper.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ConnectionHelper.h; sourceTree = "<group>"; };
 		DC1F5A06206436B20037755F /* ConnectionHelper.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ConnectionHelper.m; sourceTree = "<group>"; };
 		FB1A674B2131E65900507771 /* KeyboardSupport.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyboardSupport.h; sourceTree = "<group>"; };
@@ -580,12 +583,10 @@
 		FBD1C8E11A8AD71400C6703C /* Logger.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = Logger.m; sourceTree = "<group>"; };
 		FBD3494119FC9C04002D2A60 /* AppAssetManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppAssetManager.h; sourceTree = "<group>"; };
 		FBD3494219FC9C04002D2A60 /* AppAssetManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppAssetManager.m; sourceTree = "<group>"; };
-		FBD3494E19FF2174002D2A60 /* SettingsViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SettingsViewController.h; sourceTree = "<group>"; };
-		FBD3494F19FF2174002D2A60 /* SettingsViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SettingsViewController.m; sourceTree = "<group>"; };
+		FBD3494F19FF2174002D2A60 /* SettingsViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
 		FBD3495119FF36FB002D2A60 /* SWRevealViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SWRevealViewController.h; sourceTree = "<group>"; };
 		FBD3495219FF36FB002D2A60 /* SWRevealViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SWRevealViewController.m; sourceTree = "<group>"; };
-		FBD349601A0089F6002D2A60 /* DataManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = DataManager.h; path = Database/DataManager.h; sourceTree = "<group>"; };
-		FBD349611A0089F6002D2A60 /* DataManager.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = DataManager.m; path = Database/DataManager.m; sourceTree = "<group>"; };
+		FBD349611A0089F6002D2A60 /* DataManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = DataManager.swift; path = Database/DataManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -619,6 +620,7 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		18A0EE282EFBCBFB00BA853A /* SVGs */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = SVGs; sourceTree = "<group>"; };
 		2A039E572F72892B00546768 /* VoidLinkPreview */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (2AAA4E862F76BDC6001E20DC /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 2A93D5662F7D016C00C2207F /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 2AE67B7F30580E1700BBAAFC /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = VoidLinkPreview; sourceTree = "<group>"; };
+		C76000000000000000000001 /* ThirdParty/SwiftCollections */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = ThirdParty/SwiftCollections; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -638,8 +640,6 @@
 				A703000000000000000003 /* libxml2.tbd in Frameworks */,
 				A703000000000000000004 /* libmoonlight-common.a in Frameworks */,
 				A703000000000000000005 /* libavutil.a in Frameworks */,
-				A703000000000000000006 /* DequeModule in Frameworks */,
-				A703000000000000000007 /* Collections in Frameworks */,
 				A703000000000000000008 /* CoreGraphics.framework in Frameworks */,
 				A703000000000000000009 /* CoreData.framework in Frameworks */,
 				A70300000000000000000A /* OpenSSL in Frameworks */,
@@ -664,8 +664,6 @@
 				9890CF6B203B7EE1006C4B06 /* libxml2.tbd in Frameworks */,
 				98CFB82F1CAD481B0048EF74 /* libmoonlight-common.a in Frameworks */,
 				98882A082AF60F7400C5A11C /* libavutil.a in Frameworks */,
-				182760F72E83E2EA00EC1C5C /* DequeModule in Frameworks */,
-				182760FD2E83E68B00EC1C5C /* Collections in Frameworks */,
 				FB290CF419B2C406004C83CF /* CoreGraphics.framework in Frameworks */,
 				FB290CF819B2C406004C83CF /* CoreData.framework in Frameworks */,
 				98181BED2791281100E43572 /* CoreMotion.framework in Frameworks */,
@@ -675,7 +673,6 @@
 				18780CC72F10D66000B90483 /* StoreKit.framework in Frameworks */,
 				FB290CF219B2C406004C83CF /* Foundation.framework in Frameworks */,
 				FB4679011A57048000377732 /* CoreFoundation.framework in Frameworks */,
-				182760FA2E83E57D00EC1C5C /* DequeModule in Frameworks */,
 				98181BE92791277400E43572 /* libSDL2.a in Frameworks */,
 				98882A062AF60F7000C5A11C /* libavcodec.a in Frameworks */,
 			);
@@ -910,6 +907,7 @@
 				FB89463719F6473800339C8A /* Launch Screen.xib */,
 				FB290D0819B2C406004C83CF /* Images.xcassets */,
 				18A0EE282EFBCBFB00BA853A /* SVGs */,
+				C76000000000000000000001 /* ThirdParty/SwiftCollections */,
 				FB290D0519B2C406004C83CF /* Limelight.xcdatamodeld */,
 				FB1D59981BBCCD7E00F482CA /* AppCollectionView.h */,
 				FB1D59991BBCCD7E00F482CA /* AppCollectionView.m */,
@@ -971,6 +969,7 @@
 				844CD0EA2C7F8500004861A7 /* PureNativeTouchHandler.m */,
 				843CC7F42C1E778000BBC475 /* NativeTouchHandler.h */,
 				843CC7F52C1E7A1700BBC475 /* NativeTouchHandler.m */,
+				A7EC06010000000000000002 /* TrackpadTouchHandler.swift */,
 				9819CC12254F107A008A7C8E /* RelativeTouchHandler.h */,
 				9819CC13254F107A008A7C8E /* RelativeTouchHandler.m */,
 				9819CC20254F180F008A7C8E /* AbsoluteTouchHandler.h */,
@@ -982,7 +981,9 @@
 				18FCADAE2ECAC23200787A96 /* PencilHandler.swift */,
 				18416EA32EBB3DCE00AE0124 /* UITouchUtil.swift */,
 				18B317022EE67A39009B62C2 /* InertialScroller.swift */,
-				18951D1C2EBB6D2300A86E12 /* TouchPadGestureHandler.swift */,
+				18951D1C2EBB6D2300A86E12 /* RelativeTouchGestureHandler.swift */,
+				C0DE5A1E2F80000100000021 /* FloatingKeyboardButton.swift */,
+				C0DE5A1E2F80000100000011 /* CursorInertia.swift */,
 				18A765BC2ECD51FB004784AA /* ControllerUtil.swift */,
 				A1C0DE002FBC000100000001 /* ControllerNavigator.swift */,
 				A1C0DE022FBC000100000001 /* RadialMenuOverlayView.swift */,
@@ -1075,8 +1076,7 @@
 				FB89462719F646E200339C8A /* StreamFrameViewController.m */,
 				A5E771012FFF100100000001 /* SettingsSwiftUI.swift */,
 				A5E771032FFF100100000003 /* SettingsControls.swift */,
-				FBD3494E19FF2174002D2A60 /* SettingsViewController.h */,
-				FBD3494F19FF2174002D2A60 /* SettingsViewController.m */,
+				FBD3494F19FF2174002D2A60 /* SettingsViewController.swift */,
 				2B7A10012FFB000100000001 /* SettingsTouchVelocityPreview.swift */,
 				2AC1EAFA2F922602004EDA80 /* UIStackExtension.swift */,
 				FB4A23B61A9D3637004D2EF2 /* LoadingFrameViewController.h */,
@@ -1177,14 +1177,12 @@
 		FBD3495F1A004453002D2A60 /* Database */ = {
 			isa = PBXGroup;
 			children = (
-				FBD349601A0089F6002D2A60 /* DataManager.h */,
-				FBD349611A0089F6002D2A60 /* DataManager.m */,
+				FBD349611A0089F6002D2A60 /* DataManager.swift */,
 				9832D1341BBCD5C50036EF48 /* TemporaryApp.h */,
 				9832D1351BBCD5C50036EF48 /* TemporaryApp.m */,
 				98D5856B1C0EA79600F6CC00 /* TemporaryHost.h */,
 				98D5856C1C0EA79600F6CC00 /* TemporaryHost.m */,
-				98D5856E1C0ED0E800F6CC00 /* TemporarySettings.h */,
-				98D5856F1C0ED0E800F6CC00 /* TemporarySettings.m */,
+				98D5856F1C0ED0E800F6CC00 /* TemporarySettings.swift */,
 			);
 			name = Database;
 			sourceTree = "<group>";
@@ -1229,13 +1227,12 @@
 			);
 			fileSystemSynchronizedGroups = (
 				18A0EE282EFBCBFB00BA853A /* SVGs */,
+				C76000000000000000000001 /* ThirdParty/SwiftCollections */,
 			);
 			name = "VoidLink TV";
 			packageProductDependencies = (
 				18A0EE262EFB9B5A00BA853A /* SVGKitSwift */,
 				18A0EE242EFB9B5A00BA853A /* SVGKit */,
-				182760F62E83E2EA00EC1C5C /* DequeModule */,
-				182760FC2E83E68B00EC1C5C /* Collections */,
 				F74BEF9B2C1A705600224667 /* OpenSSL */,
 			);
 			productName = "VoidLink TV";
@@ -1257,6 +1254,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				18A0EE282EFBCBFB00BA853A /* SVGs */,
+				C76000000000000000000001 /* ThirdParty/SwiftCollections */,
 			);
 			name = VoidLink;
 			productName = Limelight;
@@ -1296,7 +1294,6 @@
 			mainGroup = FB290CE519B2C406004C83CF;
 			packageReferences = (
 				F74BEF9A2C1A705600224667 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */,
-				182760F52E83E2EA00EC1C5C /* XCRemoteSwiftPackageReference "swift-collections" */,
 				18A0EE232EFB9B5A00BA853A /* XCRemoteSwiftPackageReference "SVGKit" */,
 			);
 			productRefGroup = FB290CEF19B2C406004C83CF /* Products */;
@@ -1398,7 +1395,8 @@
 				A70100000000000000000005 /* KeyboardSupport.m in Sources */,
 				A70100000000000000000006 /* Frame.m in Sources */,
 				A70100000000000000000007 /* FrameQueue.m in Sources */,
-				A70100000000000000000008 /* TouchPadGestureHandler.swift in Sources */,
+				A70100000000000000000008 /* RelativeTouchGestureHandler.swift in Sources */,
+				C0DE5A1E2F80000100000013 /* CursorInertia.swift in Sources */,
 				A70100000000000000000009 /* FloatBuffer.m in Sources */,
 				A7010000000000000000000A /* PaddedLabel.m in Sources */,
 				A7010000000000000000000B /* BandwidthTracker.m in Sources */,
@@ -1443,7 +1441,7 @@
 				A70100000000000000000034 /* LocalizationHelper.m in Sources */,
 				A70100000000000000000035 /* SceneDelegate.m in Sources */,
 				A70100000000000000000036 /* SafeTimer.swift in Sources */,
-				A70100000000000000000037 /* SettingsViewController.m in Sources */,
+				A70100000000000000000037 /* SettingsViewController.swift in Sources */,
 				A70100000000000000000038 /* SettingsTouchVelocityPreview.swift in Sources */,
 				A70100000000000000000039 /* NativeTouchPointer.m in Sources */,
 				A7010000000000000000003A /* ThemeManager.swift in Sources */,
@@ -1469,7 +1467,7 @@
 				A7010000000000000000004E /* MetalView.m in Sources */,
 				A7010000000000000000004F /* MetalVideoRenderer.m in Sources */,
 				A70100000000000000000050 /* ProfileSelectorViewController.swift in Sources */,
-				A70100000000000000000051 /* TemporarySettings.m in Sources */,
+				A70100000000000000000051 /* TemporarySettings.swift in Sources */,
 				A70100000000000000000053 /* UUIDHelper.swift in Sources */,
 				A70100000000000000000054 /* CryptoManager.m in Sources */,
 				A70100000000000000000055 /* ConnectionHelper.m in Sources */,
@@ -1488,7 +1486,7 @@
 				A70100000000000000000062 /* ControllerSupport.m in Sources */,
 				A70100000000000000000063 /* AppAssetResponse.m in Sources */,
 				A70100000000000000000064 /* AboutViewController.swift in Sources */,
-				A70100000000000000000065 /* DataManager.m in Sources */,
+				A70100000000000000000065 /* DataManager.swift in Sources */,
 				A70100000000000000000066 /* ImGuiRenderer.mm in Sources */,
 				A70100000000000000000067 /* InertialScroller.swift in Sources */,
 				A70100000000000000000068 /* UIStackExtension.swift in Sources */,
@@ -1518,13 +1516,16 @@
 				FB1A674D2131E65900507771 /* KeyboardSupport.m in Sources */,
 				97E20DDF2E2164A9000D5DCA /* Frame.m in Sources */,
 				97E20DE02E2164A9000D5DCA /* FrameQueue.m in Sources */,
-				18951D1D2EBB6D2300A86E12 /* TouchPadGestureHandler.swift in Sources */,
+				18951D1D2EBB6D2300A86E12 /* RelativeTouchGestureHandler.swift in Sources */,
+				C0DE5A1E2F80000100000022 /* FloatingKeyboardButton.swift in Sources */,
+				C0DE5A1E2F80000100000012 /* CursorInertia.swift in Sources */,
 				97E20DE12E2164A9000D5DCA /* FloatBuffer.m in Sources */,
 				18FCADAF2ECAC23200787A96 /* PencilHandler.swift in Sources */,
 				97E20DE22E2164A9000D5DCA /* PaddedLabel.m in Sources */,
 				97E20DE32E2164A9000D5DCA /* BandwidthTracker.m in Sources */,
 				84591A512BE1625E006AAB10 /* CustomEdgeSlideGestureRecognizer.m in Sources */,
 				843CC7F62C1E7A1700BBC475 /* NativeTouchHandler.m in Sources */,
+				A7EC06010000000000000001 /* TrackpadTouchHandler.swift in Sources */,
 				97E20DEE2E2165A5000D5DCA /* ImGuiPlots.mm in Sources */,
 				FB89463219F646E200339C8A /* VideoDecoderRenderer.m in Sources */,
 				A1F100012FFB000100000001 /* FrameInterpolator.swift in Sources */,
@@ -1568,7 +1569,7 @@
 				84FD0B512C31338D006B5BE5 /* LocalizationHelper.m in Sources */,
 				97E20DEA2E216532000D5DCA /* SceneDelegate.m in Sources */,
 				1817B61E2E6FD04D000D938D /* SafeTimer.swift in Sources */,
-				FBD3495019FF2174002D2A60 /* SettingsViewController.m in Sources */,
+				FBD3495019FF2174002D2A60 /* SettingsViewController.swift in Sources */,
 				2B7A10022FFB000100000001 /* SettingsTouchVelocityPreview.swift in Sources */,
 				843CC7F02C1E757D00BBC475 /* NativeTouchPointer.m in Sources */,
 				2A7113FD2F5A6C65001D852D /* ThemeManager.swift in Sources */,
@@ -1598,7 +1599,8 @@
 				97E20DD12E21647A000D5DCA /* MetalView.m in Sources */,
 				97E20DD22E21647A000D5DCA /* MetalVideoRenderer.m in Sources */,
 				3A4A3A112F0C000100000001 /* ProfileSelectorViewController.swift in Sources */,
-				98D585701C0ED0E800F6CC00 /* TemporarySettings.m in Sources */,
+				98D585701C0ED0E800F6CC00 /* TemporarySettings.swift in Sources */,
+				1829CE3F2E2154DF0074A99A /* SceneDelegate.m in Sources */,
 				18729EDE2E8BD68800101194 /* UUIDHelper.swift in Sources */,
 				FB89462819F646E200339C8A /* CryptoManager.m in Sources */,
 				DC1F5A07206436B20037755F /* ConnectionHelper.m in Sources */,
@@ -1617,7 +1619,7 @@
 				FB89462A19F646E200339C8A /* ControllerSupport.m in Sources */,
 				FB9AFD3D1A7E111600872C98 /* AppAssetResponse.m in Sources */,
 				1888C1922E24C33100108730 /* AboutViewController.swift in Sources */,
-				FBD349621A0089F6002D2A60 /* DataManager.m in Sources */,
+				FBD349621A0089F6002D2A60 /* DataManager.swift in Sources */,
 				97E20DE72E216510000D5DCA /* ImGuiRenderer.mm in Sources */,
 				18B317032EE67A3A009B62C2 /* InertialScroller.swift in Sources */,
 				2AC1EAFC2F922889004EDA80 /* UIStackExtension.swift in Sources */,
@@ -1804,7 +1806,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/third_party/moonlight-audio-haptics/include",
-					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					"$(TOOLCHAIN_DIR)/usr/include",
 					"$(PROJECT_DIR)/moonlight-common/moonlight-common-c/src",
 					"$(SDKROOT)/usr/include/libxml2/**",
 					"$(PROJECT_DIR)/libs/FFmpeg/include",
@@ -1877,7 +1879,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/third_party/moonlight-audio-haptics/include",
-					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					"$(TOOLCHAIN_DIR)/usr/include",
 					"$(PROJECT_DIR)/moonlight-common/moonlight-common-c/src",
 					"$(SDKROOT)/usr/include/libxml2/**",
 					"$(PROJECT_DIR)/libs/FFmpeg/include",
@@ -1988,6 +1990,7 @@
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_VERSION = 4.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				__DIAGNOSE_INVALID_DEPLOYMENT_TARGET_AS_ERROR = No;
 			};
 			name = Debug;
 		};
@@ -2044,6 +2047,7 @@
 				SWIFT_VERSION = 4.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
+				__DIAGNOSE_INVALID_DEPLOYMENT_TARGET_AS_ERROR = No;
 			};
 			name = Release;
 		};
@@ -2061,7 +2065,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/third_party/moonlight-audio-haptics/include",
-					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					"$(TOOLCHAIN_DIR)/usr/include",
 					"$(PROJECT_DIR)/moonlight-common/moonlight-common-c/src",
 					"$(SDKROOT)/usr/include/libxml2/**",
 					"$(PROJECT_DIR)/libs/FFmpeg/include",
@@ -2132,7 +2136,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/third_party/moonlight-audio-haptics/include",
-					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					"$(TOOLCHAIN_DIR)/usr/include",
 					"$(PROJECT_DIR)/moonlight-common/moonlight-common-c/src",
 					"$(SDKROOT)/usr/include/libxml2/**",
 					"$(PROJECT_DIR)/libs/FFmpeg/include",
@@ -2231,14 +2235,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		182760F52E83E2EA00EC1C5C /* XCRemoteSwiftPackageReference "swift-collections" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-collections.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.1.4;
-			};
-		};
 		18A0EE232EFB9B5A00BA853A /* XCRemoteSwiftPackageReference "SVGKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/SVGKit/SVGKit.git";
@@ -2258,21 +2254,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		182760F62E83E2EA00EC1C5C /* DequeModule */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 182760F52E83E2EA00EC1C5C /* XCRemoteSwiftPackageReference "swift-collections" */;
-			productName = DequeModule;
-		};
-		182760F92E83E57D00EC1C5C /* DequeModule */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 182760F52E83E2EA00EC1C5C /* XCRemoteSwiftPackageReference "swift-collections" */;
-			productName = DequeModule;
-		};
-		182760FC2E83E68B00EC1C5C /* Collections */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 182760F52E83E2EA00EC1C5C /* XCRemoteSwiftPackageReference "swift-collections" */;
-			productName = Collections;
-		};
 		18A0EE242EFB9B5A00BA853A /* SVGKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 18A0EE232EFB9B5A00BA853A /* XCRemoteSwiftPackageReference "SVGKit" */;
@@ -2296,9 +2277,10 @@
 			children = (
 				18BF141D2E0D7A00009DEE4F /* VoidLink v1.0.xcdatamodel */,
 				A70400000000000000000001 /* VoidLink v1.1.xcdatamodel */,
+				A70400000000000000000002 /* VoidLink v1.2.xcdatamodel */,
 				FB290D0619B2C406004C83CF /* Limelight.xcdatamodel */,
 			);
-			currentVersion = A70400000000000000000001 /* VoidLink v1.1.xcdatamodel */;
+			currentVersion = A70400000000000000000002 /* VoidLink v1.2.xcdatamodel */;
 			path = Limelight.xcdatamodeld;
 			sourceTree = "<group>";
 			versionGroupType = wrapper.xcdatamodel;

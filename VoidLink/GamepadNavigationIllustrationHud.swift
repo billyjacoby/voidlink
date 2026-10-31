@@ -28,6 +28,7 @@ final class GamepadNavigationIllustrationHud: UIView {
     private var themeObserver: NSObjectProtocol?
     private var windowConstraints: [NSLayoutConstraint] = []
     private var trailingConstraint: NSLayoutConstraint?
+    private var bottomConstraint: NSLayoutConstraint?
     private static let keyBorderViewTag = 4101
     private static let keyContentViewTag = 4102
     private static var currentHud: GamepadNavigationIllustrationHud?
@@ -35,11 +36,42 @@ final class GamepadNavigationIllustrationHud: UIView {
     private static var actionStateMinimumEndTimes: [ControllerElement: CFTimeInterval] = [:]
     private static var pendingActionStateWorkItems: [ControllerElement: DispatchWorkItem] = [:]
     private static var pendingClearHudWorkItem: DispatchWorkItem?
+    private static var presentationSuspendedForTvOSSystemTextInput = false
     private static let minimumActionStateDuration: CFTimeInterval = 0.09
     private static let hudScale: CGFloat = PublicUtils.isIPhone ? 0.74 : (PublicUtils.isTVOS ? 1.3 : 1)
     private static let hudWidth: CGFloat = {
         return 235 * hudScale}()
-    private static let edgeMargin: CGFloat = PublicUtils.isIPhone ? 5 : 24
+    private static var bottomRightInset: CGPoint {
+        guard let hud = currentHud else {return .zero}
+
+        #if compiler(>=6.4) && !os(tvOS)
+        if #available(iOS 27.1, *) {
+            if PublicUtils.isFoldableIPhone,let window = hud.window {
+                let isStreaming = (ControllerNavigator.radialMenuDelegate as? MainFrameViewController)?.isStreaming() == true
+                if isStreaming {
+                    // return CGPoint(x: 20, y: 20)
+                }
+                if PublicUtils.hingeStatus != .closed {
+                    return CGPoint(x: 45, y: 10)
+                }
+                else {
+                    switch window.traitCollection.verticalBarEdge {
+                    case .leading:
+                        return CGPoint(x: 30, y: 0)
+                    case .trailing:
+                        return CGPoint(x: 0, y: 5)
+                    default:
+                        return CGPoint(x: 5, y: 5)
+                    }
+                }
+            }
+        }
+        #endif
+        if PublicUtils.isIPhone {
+            return CGPoint(x: 5, y: 5)
+        }
+        return CGPoint(x: 24, y: 24)
+    }
     private var hints: [Hint] = []
 
     override init(frame: CGRect) {
@@ -73,7 +105,9 @@ final class GamepadNavigationIllustrationHud: UIView {
 
     @discardableResult
     static func showInKeyWindow() -> GamepadNavigationIllustrationHud? {
-        guard let window = keyWindow(), ControllerUtil.primaryGCController != nil else {
+        guard !presentationSuspendedForTvOSSystemTextInput,
+              let window = keyWindow(),
+              ControllerUtil.primaryGCController != nil else {
             return nil
         }
         
@@ -99,6 +133,7 @@ final class GamepadNavigationIllustrationHud: UIView {
 
 
     @objc static func updateNavigationElements(_ elements: [ControllerNavigationElement], forceDisplay: Bool = false) {
+        guard !presentationSuspendedForTvOSSystemTextInput else { return }
         if !forceDisplay {
             guard ControllerNavigator.enabled, ControllerUtil.primaryGCController != nil else {return}
             guard !ControllerNavigator.stickReleasedInRadialMenu else {return}
@@ -153,9 +188,24 @@ final class GamepadNavigationIllustrationHud: UIView {
             requestHudDetachKeepingMinimumActionDuration()
         }
     }
+
+    @objc static func setTvOSSystemTextInputActive(_ active: Bool) {
+#if os(tvOS)
+        PublicUtils.runOnMain {
+            presentationSuspendedForTvOSSystemTextInput = active
+            if active {
+                finishHudDetach()
+            } else {
+                updateHud()
+            }
+        }
+#endif
+    }
     
     func updateTheme() {
-        let isDark = ThemeManager.userInterfaceStyle() == .dark
+        let isStreaming = (ControllerNavigator.radialMenuDelegate as? MainFrameViewController)?.isStreaming() == true
+        let isDark = !isStreaming && ThemeManager.userInterfaceStyle() == .dark
+        let textColor = isStreaming ? UIColor.black : ThemeManager.textColor
 
         backgroundColor = isDark
             ? UIColor(red: 28.0 / 255.0, green: 28.0 / 255.0, blue: 30.0 / 255.0, alpha: 0.62)
@@ -191,7 +241,7 @@ final class GamepadNavigationIllustrationHud: UIView {
                     imageView.tintColor = isInAction ? ThemeManager.appPrimaryColor.withAlphaComponent(isDark ? 1 : 1) : ThemeManager.appPrimaryColor.withAlphaComponent(isDark ? 0.83 : 0.83)
                 }
             }
-            updateTitleColors(in: titleView, color: ThemeManager.textColor.withAlphaComponent(isDark ? 0.69 : 0.6))
+            updateTitleColors(in: titleView, color: textColor.withAlphaComponent(isDark ? 0.69 : 0.6))
         }
     }
 
@@ -298,12 +348,14 @@ final class GamepadNavigationIllustrationHud: UIView {
             containerView.addSubview(self)
 
             let trailingConstraint = containerView.trailingAnchor.constraint(equalTo: window.safeAreaLayoutGuide.trailingAnchor)
+            let bottomConstraint = containerView.bottomAnchor.constraint(equalTo: window.safeAreaLayoutGuide.bottomAnchor)
             self.trailingConstraint = trailingConstraint
+            self.bottomConstraint = bottomConstraint
             windowConstraints = [
                 containerView.widthAnchor.constraint(equalToConstant: Self.hudWidth * 1),
                 containerView.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 1),
                 trailingConstraint,
-                containerView.bottomAnchor.constraint(equalTo: window.safeAreaLayoutGuide.bottomAnchor, constant: -Self.edgeMargin),
+                bottomConstraint,
 
                 widthAnchor.constraint(equalToConstant: Self.hudWidth),
                 centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
@@ -320,13 +372,15 @@ final class GamepadNavigationIllustrationHud: UIView {
         NSLayoutConstraint.deactivate(windowConstraints)
         windowConstraints.removeAll()
         trailingConstraint = nil
+        bottomConstraint = nil
         removeFromSuperview()
         containerView.removeFromSuperview()
     }
 
     private func updateTrailingOffset(for window: UIWindow) {
-        let horizontalMargin = Self.edgeMargin + (PublicUtils.isIPhone ? 0 : window.safeAreaInsets.bottom)
+        let horizontalMargin = Self.bottomRightInset.x + (PublicUtils.isIPhone ? 0 : window.safeAreaInsets.bottom)
         trailingConstraint?.constant = -horizontalMargin
+        bottomConstraint?.constant = -Self.bottomRightInset.y
     }
 
     private func makeRow(for hint: Hint) -> UIStackView {
@@ -450,6 +504,23 @@ final class GamepadNavigationIllustrationHud: UIView {
         return keyContainerView
     }
 
+    @objc(refreshForWindowTransition:)
+    static func refreshForWindowTransition(_ window: UIWindow?) {
+        guard let hud = currentHud, let window,
+              hud.containerView.superview === window else { return }
+        hud.renderForCurrentLayout()
+    }
+
+    private func renderForCurrentLayout() {
+        // Refresh an existing presentation without creating or reattaching a HUD.
+        guard let window = containerView.superview as? UIWindow else { return }
+        reloadHintRows()
+        updateTheme()
+        updateTrailingOffset(for: window)
+        window.setNeedsLayout()
+        window.layoutIfNeeded()
+    }
+
     private func observeThemeChanges() {
         themeObserver = NotificationCenter.default.addObserver(
             forName: Notification.Name(ThemeManager.ThemeDidChangeNotification),
@@ -516,7 +587,7 @@ final class GamepadNavigationIllustrationHud: UIView {
         DispatchQueue.main.asyncAfter(deadline: .now() + remainingDuration, execute: workItem)
     }
 
-    private static func finishHudDetach() {
+    static func finishHudDetach() {
         pendingClearHudWorkItem?.cancel()
         pendingClearHudWorkItem = nil
         pendingActionStateWorkItems.values.forEach { $0.cancel() }

@@ -12,7 +12,10 @@
 #import "Connection.h"
 #import "Plot.h"
 #import "Utils.h"
-#import "DataManager.h"
+#import "AppDelegate.h"
+#import "TemporaryHost.h"
+#import "TemporaryApp.h"
+#import "VoidLink-Swift.h"
 
 #import <VideoToolbox/VideoToolbox.h>
 
@@ -34,6 +37,9 @@
     char _appVersionString[32];
     char _gfeVersionString[32];
     char _rtspSessionUrl[128];
+#if TARGET_OS_TV
+    BOOL _audioPlaybackTerminated;
+#endif
 }
 
 static NSLock* initLock;
@@ -304,12 +310,20 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
     want.channels = opusConfig->channelCount;
     want.samples = opusConfig->samplesPerFrame;
 
+#if TARGET_OS_TV
+    // A dormant SDL device still owns playback I/O and changes the shared session.
+    // Only open it when it is the selected playback backend.
+    if (!useSystemAudioEngine) {
+#endif
     audioDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
     if (audioDevice == 0) {
         Log(LOG_E, @"Failed to open audio device: %s\n", SDL_GetError());
         ArCleanup();
         return -1;
     }
+#if TARGET_OS_TV
+    }
+#endif
     
     audioConfig = *opusConfig;
     audioFrameSize = opusConfig->samplesPerFrame * sizeof(float) * opusConfig->channelCount;
@@ -333,6 +347,9 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
     }
     
     // Start playback
+#if TARGET_OS_TV
+    if (audioDevice != 0)
+#endif
     SDL_PauseAudioDevice(audioDevice, 0);
     
     // [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionMixWithOthers error:nil];
@@ -343,16 +360,52 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
     DataManager* dataMan = [[DataManager alloc] init];
     TemporarySettings* tempSettings = [dataMan getSettings];
     [Connection setAudioBufferLimitMs:tempSettings.audioBufferLimitMs ? tempSettings.audioBufferLimitMs.intValue : 80];
-    bool useBluetoothD2P = tempSettings.useBuiltinMic || !tempSettings.redirectMic;
-    AVAudioSessionCategoryOptions bluetoothAudioOption = useBluetoothD2P ? AVAudioSessionCategoryOptionAllowBluetoothA2DP : AVAudioSessionCategoryOptionAllowBluetooth;
+#if TARGET_OS_TV
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    // NSLog(@"[TVAudio] before playback setup: category=%@, mode=%@, options=%lu, outputVolume=%.3f, inputAvailable=%d, inputs=%@, outputs=%@",
+          // session.category, session.mode, (unsigned long)session.categoryOptions, session.outputVolume,
+          // session.isInputAvailable, session.currentRoute.inputs, session.currentRoute.outputs);
+    AVAudioSessionCategory category = AVAudioSessionCategoryPlayback;
+    AVAudioSessionCategoryOptions options = 0;
+    if (@available(tvOS 17.0, *)) {
+        if (tempSettings.redirectMic && [MicHandler permissionGranted]) {
+            // Continuity may not be paired yet. Keep desktop playback available
+            // until MicHandler can activate the connected phone's input.
+            if (!tempSettings.useBuiltinMic || session.isInputAvailable) {
+                category = AVAudioSessionCategoryPlayAndRecord;
+                options = (tempSettings.useBuiltinMic ? AVAudioSessionCategoryOptionAllowBluetoothA2DP : AVAudioSessionCategoryOptionAllowBluetoothHFP)
+                        | AVAudioSessionCategoryOptionMixWithOthers;
+            }
+        }
+    }
+    NSError *sessionError = nil;
+    [session setCategory:category mode:AVAudioSessionModeDefault options:options error:&sessionError];
+    if (sessionError != nil) {
+        Log(LOG_W, @"[TVMic] audio session category failed; keeping playback until input is ready: %@", sessionError);
+        sessionError = nil;
+        [session setCategory:AVAudioSessionCategoryPlayback mode:AVAudioSessionModeDefault options:0 error:&sessionError];
+        if (sessionError != nil) Log(LOG_W, @"[TVMic] playback fallback failed: %@", sessionError);
+    }
+    sessionError = nil;
+    [session setActive:YES error:&sessionError];
+    if (sessionError != nil) Log(LOG_W, @"[TVMic] audio session activation failed: %@", sessionError);
+#else
+    // Playback already supports A2DP. Explicit Bluetooth options apply only to recording.
+    AVAudioSessionCategoryOptions bluetoothAudioOption = tempSettings.redirectMic
+        ? (tempSettings.useBuiltinMic ? AVAudioSessionCategoryOptionAllowBluetoothA2DP : AVAudioSessionCategoryOptionAllowBluetooth)
+        : 0;
     AVAudioSessionCategoryOptions volumeMixOption = tempSettings.duckOtherApps ? AVAudioSessionCategoryOptionDuckOthers : AVAudioSessionCategoryOptionMixWithOthers;
+    // With microphone redirection, default to the loudspeaker instead of the receiver.
+    // External headphone/Bluetooth routes still take precedence.
+    AVAudioSessionCategoryOptions speakerOption = tempSettings.redirectMic ? AVAudioSessionCategoryOptionDefaultToSpeaker : 0;
     AVAudioSession *session = [AVAudioSession sharedInstance];
     [session setCategory:tempSettings.redirectMic ? AVAudioSessionCategoryPlayAndRecord : AVAudioSessionCategoryPlayback
                     mode:AVAudioSessionModeDefault
-                 options:volumeMixOption|bluetoothAudioOption
+                 options:volumeMixOption|bluetoothAudioOption|speakerOption
                    error:nil];
     if(tempSettings.redirectMic) if(@available(iOS 13.0, *)) [session setAllowHapticsAndSystemSoundsDuringRecording:YES error:nil];
     [session setActive:YES error:nil];
+#endif
     @synchronized ([Connection class]) {
         // Termination may have raced the SDL/Opus/session setup above.
         if (lifecycleGeneration != audioLifecycleGeneration) {
@@ -364,6 +417,9 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
         audioSessionInterrupted = false;
         AudioEngineInit(audioConfig.sampleRate, audioConfig.channelCount);
     }
+#if TARGET_OS_TV
+    NSLog(@"[TVMic] playback ready: systemEngine=%d, category=%@, options=%lu, inputs=%@", useSystemAudioEngine, session.category, (unsigned long)session.categoryOptions, session.currentRoute.inputs);
+#endif
 
     return 0;
 }
@@ -484,6 +540,46 @@ void AudioEngineInit(int sampleRate, int channelCount) {
     [audioPlayerNode play];
 }
 
++ (void)logSysAudioPlaybackLatency {
+    @synchronized ([Connection class]) {
+        if (!audioPlaybackActive) return;
+        AVAudioSession *session = [AVAudioSession sharedInstance];
+        double queuedMs;
+        uint64_t dropped;
+        @synchronized (playbackQueueLock) {
+            queuedMs = audioConfig.sampleRate > 0 ? 1000.0 * playbackQueuedFrames / audioConfig.sampleRate : 0;
+            dropped = playbackDroppedBuffers;
+        }
+        NSLog(@"[AudioPlayback] latency: actualIO=%.4f, sessionOutput=%.4f, player=%.4f, outputNode=%.4f, queuedMs=%.1f, dropped=%llu",
+              session.IOBufferDuration, session.outputLatency, audioPlayerNode.outputPresentationLatency,
+              audioEngine.outputNode.presentationLatency, queuedMs, (unsigned long long)dropped);
+    }
+}
+
+#if TARGET_OS_TV
++ (BOOL)resumeSysAudioPlaybackBeforeMicWithError:(NSError **)error {
+    @synchronized ([Connection class]) {
+        if (!useSystemAudioEngine) return YES;
+        if (!audioPlaybackActive || !audioEngine || !audioPlayerNode || audioBuffer == NULL || audioSessionInterrupted) {
+            if (error) *error = [NSError errorWithDomain:@"TVAudio" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Playback is not ready for microphone startup"}];
+            return NO;
+        }
+        if (audioEngine.isRunning && audioPlayerNode.isPlaying) return YES;
+
+        // Restore playback before enabling VPIO, without resetting the session
+        // or notifying the microphone. Serialize with scheduling and teardown.
+        audioLifecycleGeneration++;
+        audioSessionInterrupted = true;
+        ResetPlaybackQueue();
+        [audioPlayerNode stop];
+        BOOL started = audioEngine.isRunning || [audioEngine startAndReturnError:error];
+        if (started) [audioPlayerNode play];
+        audioSessionInterrupted = false;
+        return started;
+    }
+}
+#endif
+
 + (void)resetSysAudioPlaybackCooldown {
     @synchronized ([Connection class]) {
         hasTriggeredPlaybackRecovery = NO;
@@ -491,9 +587,8 @@ void AudioEngineInit(int sampleRate, int channelCount) {
     }
 }
 
-// Only the first backpressure episode within the cooldown is allowed to start.
-// The caller drops until the existing queue drains, avoiding repeated recovery
-// work while an audio route is stalled.
+// Cooldown gates explicit engine resets only, never queue admission. Do not
+// reset this timestamp merely because the engine or playback queue is rebuilt.
 static BOOL TryBeginPlaybackRecovery(void) {
     @synchronized ([Connection class]) {
         CFTimeInterval now = CACurrentMediaTime();
@@ -515,6 +610,12 @@ static BOOL TryBeginPlaybackRecovery(void) {
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0),
                    dispatch_get_main_queue(), ^{
+        @synchronized ([Connection class]) {
+            if (!audioPlaybackActive || lifecycleGeneration != audioLifecycleGeneration) return;
+        }
+        // Mic observers synchronously enter their capture queue, which can call
+        // back into Connection. Never post while holding the lifecycle lock.
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"VoidLinkAudioPlaybackWillReset" object:nil];
         @synchronized ([Connection class]) {
             if (!audioPlaybackActive || lifecycleGeneration != audioLifecycleGeneration) return;
             @try {
@@ -547,10 +648,10 @@ static BOOL TryBeginPlaybackRecovery(void) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 @synchronized ([Connection class]) {
-                    if (audioPlaybackActive && lifecycleGeneration == audioLifecycleGeneration) {
-                        audioSessionInterrupted = false;
-                    }
+                    if (!audioPlaybackActive || lifecycleGeneration != audioLifecycleGeneration) return;
+                    audioSessionInterrupted = false;
                 }
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"VoidLinkAudioPlaybackDidReset" object:nil];
             });
         }
     });
@@ -796,7 +897,12 @@ void ClDs5HapticsIrV2(const LI_DS5_HAPTICS_IR_FRAME_V2* frame)
     // won't be able to acquire it if LiStartConnection is in
     // progress.
     LiInterruptConnection();
-    StopSystemAudioPlayback();
+    @synchronized ([Connection class]) {
+#if TARGET_OS_TV
+        _audioPlaybackTerminated = YES;
+#endif
+        StopSystemAudioPlayback();
+    }
     [ControllerUtil stopAllDualSenseHaptics];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 
@@ -809,6 +915,44 @@ void ClDs5HapticsIrV2(const LI_DS5_HAPTICS_IR_FRAME_V2* frame)
         [initLock unlock];
     });
 }
+
+#if TARGET_OS_TV
+- (void)handlePlaybackConfigurationChange:(NSNotification *)notification {
+    AVAudioEngine *changedEngine;
+    uint64_t lifecycleGeneration;
+    @synchronized ([Connection class]) {
+        if (_audioPlaybackTerminated || !audioPlaybackActive || !useSystemAudioEngine || audioSessionInterrupted) return;
+        changedEngine = audioEngine;
+        lifecycleGeneration = audioLifecycleGeneration;
+        if ([notification.name isEqualToString:AVAudioEngineConfigurationChangeNotification]
+            && notification.object != changedEngine) return;
+    }
+    __weak Connection *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        Connection *self = weakSelf;
+        if (!self) return;
+        @synchronized ([Connection class]) {
+            if (self->_audioPlaybackTerminated || !audioPlaybackActive || !useSystemAudioEngine || audioSessionInterrupted
+                || lifecycleGeneration != audioLifecycleGeneration || !changedEngine || changedEngine != audioEngine) return;
+            if (audioEngine.isRunning && audioPlayerNode.isPlaying) return;
+            // A device/rate change stops the engine and invalidates scheduled buffers.
+            // Restart this graph without resetting the independently running microphone.
+            audioLifecycleGeneration++;
+            audioSessionInterrupted = true;
+            ResetPlaybackQueue();
+            [audioPlayerNode stop];
+            NSError *error = nil;
+            BOOL started = audioEngine.isRunning || [audioEngine startAndReturnError:&error];
+            if (started) [audioPlayerNode play];
+            audioSessionInterrupted = false;
+            if (!started) {
+                NSLog(@"[AudioPlayback] route recovery failed: error=%@, outputs=%@", error,
+                      [AVAudioSession sharedInstance].currentRoute.outputs);
+            }
+        }
+    });
+}
+#endif
 
 - (void)handleAudioSessionInterruption:(NSNotification *)notification {
     NSDictionary *info = notification.userInfo;
@@ -900,7 +1044,8 @@ void ClDs5HapticsIrV2(const LI_DS5_HAPTICS_IR_FRAME_V2* frame)
     _streamConfig.bitrate = config.bitRate;
     _streamConfig.supportedVideoFormats = config.supportedVideoFormats;
     _streamConfig.audioConfiguration = config.audioConfiguration;
-    _streamConfig.redirectMic = config.redirectMic && [MicHandler permissionGranted];
+    // Negotiate the channel for in-session push-to-talk; local capture remains opt-in.
+    _streamConfig.redirectMic = true;
     [Connection setVolume:config.localVolume];
     
     // Since we require iOS 12 or above, we're guaranteed to be running
@@ -965,7 +1110,7 @@ void ClDs5HapticsIrV2(const LI_DS5_HAPTICS_IR_FRAME_V2* frame)
     _clCallbacks.setControllerLED = ClSetControllerLED;
     _clCallbacks.setAdaptiveTriggers = ClSetAdaptiveTriggers;
     useDualSenseAuthoredPCM = (config.emulatedControllerType == ControllerEmulationPsEnhancedHaptic
-                               && ControllerUtil.hasDualSenseController) || config.hapticEngine == RumbleDevice;
+                               && ControllerUtil.hasDualSenseController) || config.hapticEngine == HapticEnginePreferenceRumbleDevice;
     if (useDualSenseAuthoredPCM) {
         _clCallbacks.ds5HapticsPcm = ClDs5HapticsPcm;
         // _clCallbacks.ds5HapticsIrV2 = ClDs5HapticsIrV2;
@@ -975,6 +1120,11 @@ void ClDs5HapticsIrV2(const LI_DS5_HAPTICS_IR_FRAME_V2* frame)
            selector:@selector(handleAudioSessionInterruption:)
                name:AVAudioSessionInterruptionNotification
              object:nil];
+#if TARGET_OS_TV
+    for (NSNotificationName name in @[AVAudioEngineConfigurationChangeNotification, AVAudioSessionRouteChangeNotification]) {
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handlePlaybackConfigurationChange:) name:name object:nil];
+    }
+#endif
     
     return self;
 }

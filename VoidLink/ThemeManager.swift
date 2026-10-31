@@ -17,9 +17,25 @@ class ThemeManager: NSObject {
     private static var _privateUserInterfaceStyle: UIUserInterfaceStyle = .unspecified
     private static var _userInterfaceStyle: UIUserInterfaceStyle = .unspecified
 
+    #if os(iOS) && compiler(>=6.4)
+    private static let hingeStatusObserver = NotificationCenter.default.addObserver(
+        forName: PublicUtils.hingeStatusDidChangeNotification,
+        object: nil,
+        queue: .main
+    ) { _ in
+        /* ThemeManager.systemUserInterfaceStyleDidChange(
+            PublicUtils.currentScreen.traitCollection.userInterfaceStyle
+        ) */
+    }
+    #endif
+
+    // Keep the user's System preference separate from the explicit style used
+    // to stabilize UIKit while a Duo scene moves between its displays.
     @objc class func pinsSystemStyleForFoldable() -> Bool {
         #if os(iOS) && compiler(>=6.4)
-        if #available(iOS 27.1, *) { return PublicUtils.isFoldableRAMCached }
+        if #available(iOS 27.1, *) {
+            return PublicUtils.isFoldableRAMCached
+        }
         #endif
         return false
     }
@@ -27,16 +43,24 @@ class ThemeManager: NSObject {
     @available(iOS 13.0, tvOS 13.0, *)
     private class func currentSystemStyle() -> UIUserInterfaceStyle {
         if pinsSystemStyleForFoldable() {
-            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            // Window/controller overrides do not override their parent scene.
+            let scenes = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
                 .filter { $0.session.role == .windowApplication }
             let scene = scenes.first { $0.windows.contains { $0.isKeyWindow } }
-                ?? scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
-            if let scene { return scene.traitCollection.userInterfaceStyle }
+                ?? scenes.first { $0.activationState == .foregroundActive }
+                ?? scenes.first
+            if let scene {
+                return scene.traitCollection.userInterfaceStyle
+            }
         }
         return PublicUtils.currentScreen.traitCollection.userInterfaceStyle
     }
     
     @objc class func setPublicUIStyle() -> UIColor {
+        #if os(iOS) && compiler(>=6.4)
+        _ = hingeStatusObserver
+        #endif
         if #available(iOS 13.0, *) {
             if _privateUserInterfaceStyle == .unspecified {
                 _userInterfaceStyle = currentSystemStyle()
@@ -62,12 +86,16 @@ class ThemeManager: NSObject {
     @objc class func setUserInterfaceStyle(_ style: UIUserInterfaceStyle) {
         let oldUserInterfaceStyle = _userInterfaceStyle
         _privateUserInterfaceStyle = style
-        applyUserInterfaceStyleOverride(overrideUserInterfaceStyle())
-        
-        _ = setPublicUIStyle()
+        if pinsSystemStyleForFoldable() {
+            _ = setPublicUIStyle()
+            applyUserInterfaceStyleOverride(overrideUserInterfaceStyle())
+        } else {
+            applyUserInterfaceStyleOverride(style)
+            _ = setPublicUIStyle()
+        }
 
         if oldUserInterfaceStyle == _userInterfaceStyle {
-            return
+            // return
         }
         
         NotificationCenter.default.post(
@@ -85,11 +113,13 @@ class ThemeManager: NSObject {
         }
 
         let oldUserInterfaceStyle = _userInterfaceStyle
+        // A controller callback can now report our pinned style. Read the
+        // unmodified scene instead when following the system on Duo.
         _userInterfaceStyle = pinsSystemStyleForFoldable() ? currentSystemStyle() : style
         applyUserInterfaceStyleOverride(pinsSystemStyleForFoldable() ? _userInterfaceStyle : .unspecified)
 
         if oldUserInterfaceStyle == _userInterfaceStyle {
-            return
+            // return
         }
 
         NotificationCenter.default.post(
@@ -369,6 +399,9 @@ class ThemeManager: NSObject {
     }
     
     @objc static var appPrimaryColorWithAlpha: UIColor {
+        if userInterfaceStyle() == .dark {
+            return appPrimaryColor.withAlphaComponent(PublicUtils.isTVOS ? 0.313 : 0.275)
+        }
         return appPrimaryColor.withAlphaComponent(0.24)
     }
     

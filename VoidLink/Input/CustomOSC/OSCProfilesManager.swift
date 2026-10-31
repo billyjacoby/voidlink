@@ -15,7 +15,8 @@ import UIKit
 class OSCProfilesManager: NSObject {
     private static let profilesDefaultsKey = "OSCProfiles"
     // private static let widgetProfileUpdatedKey = "widgetProfileUpdated-20260606"
-    private static let widgetProfileUpdatedKey = "widgetProfileUpdated-20260801"
+    // private static let widgetProfileUpdatedKey = "widgetProfileUpdated-20260801"
+    private static let widgetProfileUpdatedKey = "widgetProfileUpdated-20261016"
 
     private static var sharedInstance: OSCProfilesManager?
     private static var onScreenWidgetViews: NSMutableSet?
@@ -176,7 +177,7 @@ class OSCProfilesManager: NSObject {
 
     func importEncodedProfiles(_ profilesEncoded: NSMutableArray) {
         let localProfiles = currentProfiles.mutableCopy() as? NSMutableArray ?? NSMutableArray()
-        let profilesDecoded = decodeProfiles(from: profilesEncoded)
+        var profilesDecoded = decodeProfiles(from: profilesEncoded)
         let importedIncludesDefault = (profilesDecoded.firstObject as? OSCProfile)?.name == "Default"
         let isSingleProfile = profilesEncoded.count == 1
 
@@ -230,15 +231,17 @@ class OSCProfilesManager: NSObject {
             }
         }
         
+        if(PublicUtils.isTVOS){
+            let tvProfiles = NSMutableArray()
+            tvProfiles.insert(profilesDecoded.firstObject as Any, at: 0)
+            profilesDecoded = tvProfiles
+        }
+
         persistEncodedProfiles(encodedProfiles(from: profilesDecoded))
     }
 
-    private func isIPhone() -> Bool {
-        UIDevice.current.userInterfaceIdiom == .phone
-    }
-
     func importDefaultTemplates(selectedIndex: UInt32? = nil) {
-        guard let filePath = Bundle.main.path(forResource: isIPhone() ? "widgetTemplatesIPhone" : "widgetTemplates", ofType: "bin") else {
+        guard let filePath = Bundle.main.path(forResource: (PublicUtils.isIPhone && !PublicUtils.isFoldableRAMCached) ? "widgetTemplatesIPhone" : "widgetTemplates", ofType: "bin") else {
             return
         }
 

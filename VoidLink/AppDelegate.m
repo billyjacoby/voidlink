@@ -13,7 +13,8 @@
 #import "MainFrameViewController.h"
 #import "SceneDelegate.h"
 #import "VoidLink-Swift.h"
-#import "DataManager.h"
+#import "TemporaryHost.h"
+#import "TemporaryApp.h"
 
 #if TARGET_OS_TV
 @interface AppDelegate ()
@@ -49,23 +50,11 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
 
 #if !TARGET_OS_TV
 
-/*
-// orietation limitatioin test
 - (UIInterfaceOrientationMask)application:(UIApplication *)application supportedInterfaceOrientationsForWindow:(UIWindow *)window {
-    UIViewController *topController = window.rootViewController;
-    while (topController.presentedViewController) {
-        topController = topController.presentedViewController;
-    }
-    return [topController supportedInterfaceOrientations];
+    // Rotation is constrained by the active streaming controller, not globally:
+    // host navigation and the phone's external-display trackpad stay rotatable.
+    return PublicUtils.isIPhone ? UIInterfaceOrientationMaskAllButUpsideDown : UIInterfaceOrientationMaskAll;
 }
-*/
-
-/*
-- (UIInterfaceOrientationMask)application:(UIApplication *)application supportedInterfaceOrientationsForWindow:(UIWindow *)window {
-    NSLog(@"orientation limit");
-        return UIInterfaceOrientationMaskLandscape;
-}
-*/
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     [OrientationHelper configureStreamRotationDefault];
@@ -78,7 +67,7 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
     if (@available(iOS 13.0, *)) {
         // Scene delegate will handle window creation
     } else {
-        self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+        self.window = [[UIWindow alloc] initWithFrame:[[PublicUtils currentScreen] bounds]];
         
         NSString *storyboardName;
         if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
@@ -108,6 +97,7 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     [CommandManager presetDefaultCommands];
     [GenericUtils installSegmentedControlPreviousSelectionTracking];
+    [PublicUtils installTextFieldControllerUserInteractionTracking];
     [IAPManager shared];
 
     // tvOS mounts the settings view lazily when its reveal menu first opens.

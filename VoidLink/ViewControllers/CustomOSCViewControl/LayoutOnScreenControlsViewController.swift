@@ -397,6 +397,8 @@ final class LayoutOnScreenControlsViewController: UIViewController, OnScreenWidg
         
         var hasLegacyWidget = false
         for case let encoded as Data in oscProfile.buttonStatesEncoded {
+            if PublicUtils.isSimulator {continue}
+
             guard let buttonState = self.profilesManager?.unarchiveButtonStateEncoded(encoded) else { continue }
             
             if folder != nil {
@@ -409,6 +411,7 @@ final class LayoutOnScreenControlsViewController: UIViewController, OnScreenWidg
             
             if buttonState.widgetType == 1 {
                 let widgetView = OnScreenWidgetView.widget(cmdString: buttonState.name, buttonLabel: buttonState.alias, shape: buttonState.widgetShape, profile: oscProfile)
+                guard let widgetView = widgetView else {continue}
                 widgetView.sequence = (buttonState.sequence == -1 || folder != nil) ? {
                     sequence += 1
                     return sequence
@@ -515,8 +518,6 @@ final class LayoutOnScreenControlsViewController: UIViewController, OnScreenWidg
             self.layoutOSC.oscButtonLayerPool.removeAllObjects()
         }
         
-        OnScreenWidgetView.deepestButton = nil;
-        _ = OnScreenWidgetView.getDeepestButton()
         var motionControlButtons = Set<OnScreenWidgetView>()
         if let deepestButton = OnScreenWidgetView.deepestButton {
             for widget in OnScreenWidgetView.mapping.values {
@@ -1287,6 +1288,7 @@ final class LayoutOnScreenControlsViewController: UIViewController, OnScreenWidg
             shape: params["shape"] as? String ?? "",
             profile: profile
         )
+        guard let newWidget = newWidget else {return}
 
         newWidget.sequence = widget.sequence
         newWidget.autoDockIdleDuration = widget.autoDockIdleDuration
@@ -1365,6 +1367,8 @@ final class LayoutOnScreenControlsViewController: UIViewController, OnScreenWidg
             shape: params["shape"] as? String ?? "",
             profile: profile
         )
+        guard let widgetView = widgetView else {return}
+
         view.insertSubview(widgetView, belowSubview: widgetPanelStack)
         widgetView.isHidden = true
         widgetView.sequence = widgetView.getAvailableSequence()
@@ -2288,11 +2292,11 @@ final class LayoutOnScreenControlsViewController: UIViewController, OnScreenWidg
     @objc private func buttonModeChanged(_ sender: UISegmentedControl) {
         if let selectedWidget {
             switch sender.selectedSegmentIndex {
-            case ButtonMode.slideToToggle.rawValue where selectedWidget.isFunctionalButton:
+            case ButtonMode.slideToToggle.rawValue where selectedWidget.isRegularFunctionalButton:
                 self.handleInvalidButtonModeTipsFor(widget: selectedWidget, sender: sender)
-            case ButtonMode.slideAndHold.rawValue where (selectedWidget.isFunctionalButton && !selectedWidget.isFolder) || selectedWidget.containsShortcutAction:
+            case ButtonMode.slideAndHold.rawValue where (selectedWidget.isRegularFunctionalButton && !selectedWidget.isFolder) || selectedWidget.containsShortcutAction:
                 self.handleInvalidButtonModeTipsFor(widget: selectedWidget, sender: sender)
-            case ButtonMode.tapToToggle.rawValue where selectedWidget.isFunctionalButton && !selectedWidget.isTapToToggleException:
+            case ButtonMode.tapToToggle.rawValue where selectedWidget.isRegularFunctionalButton && !selectedWidget.isTapToToggleException:
                 self.handleInvalidButtonModeTipsFor(widget: selectedWidget, sender: sender)
             default:
                 GenericUtils.handleButtonModeTip(in: self)

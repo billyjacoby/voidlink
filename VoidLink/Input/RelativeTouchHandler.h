@@ -10,7 +10,7 @@
 //
 
 #import "StreamView.h"
-#import "DataManager.h"
+@class TemporarySettings;
 #import "CustomTapGestureRecognizer.h"
 
 #define RIGHTCLICK_TAP_DOWN_TIME_THRESHOLD_S 0.1
@@ -23,6 +23,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (id)initWithView:(StreamView*)view andSettings:(TemporarySettings*)settings;
 - (void)resetInput;
+- (void)reset;
 
 @end
 

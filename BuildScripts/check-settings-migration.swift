@@ -1,4 +1,4 @@
-// Run: swift BuildScripts/check-settings-migration.swift /path/to/Limelight.momd
+// Run: swift BuildScripts/check-settings-migration.swift /path/to/Limelight.momd [1.0|1.1]
 // Uses a disposable store, never the app's installed database.
 import CoreData
 import Foundation
@@ -7,16 +7,18 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
     precondition(condition(), message)
 }
 
-guard CommandLine.arguments.count == 2 else {
-    fatalError("Pass the compiled Limelight.momd directory")
+guard (2...3).contains(CommandLine.arguments.count) else {
+    fatalError("Pass the compiled Limelight.momd directory and optional source version")
 }
 let bundle = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
-guard let original = NSManagedObjectModel(contentsOf: bundle.appendingPathComponent("VoidLink v1.0.mom")),
+let sourceVersion = CommandLine.arguments.count == 3 ? CommandLine.arguments[2] : "1.0"
+require(["1.0", "1.1"].contains(sourceVersion), "Use a shipped source model: 1.0 or 1.1")
+guard let original = NSManagedObjectModel(contentsOf: bundle.appendingPathComponent("VoidLink v\(sourceVersion).mom")),
       let current = NSManagedObjectModel(contentsOf: bundle) else {
     fatalError("Could not load original and current models")
 }
-require(original.entitiesByName["Settings"]?.attributesByName["audioBufferLimitMs"] == nil,
-        "The original schema must remain unchanged")
+let hasAudioSetting = original.entitiesByName["Settings"]?.attributesByName["audioBufferLimitMs"] != nil
+require(hasAudioSetting == (sourceVersion == "1.1"), "Shipped source schemas must remain unchanged")
 require(current.entitiesByName["Settings"]?.attributesByName["audioBufferLimitMs"] != nil,
         "The current model must include the audio setting")
 
@@ -38,6 +40,7 @@ func makeOriginalStore() throws {
     settings.setValue(1440, forKey: "height")
     settings.setValue(5, forKey: "resolutionSelected")
     settings.setValue(true, forKey: "unlockDisplayOrientation")
+    if hasAudioSetting { settings.setValue(144, forKey: "audioBufferLimitMs") }
     let host = NSManagedObject(entity: original.entitiesByName["Host"]!, insertInto: context)
     host.setValue("Saved host", forKey: "name")
     host.setValue("saved-host-uuid", forKey: "uuid")
@@ -61,8 +64,8 @@ let context = NSManagedObjectContext(concurrencyType: .mainQueueConcurrencyType)
 context.persistentStoreCoordinator = coordinator
 let settings = try context.fetch(NSFetchRequest<NSManagedObject>(entityName: "Settings"))
 require(settings.count == 1, "Saved settings must survive")
-require((settings[0].value(forKey: "audioBufferLimitMs") as? NSNumber)?.intValue == 80,
-        "Existing users must receive the 80 ms default")
+require((settings[0].value(forKey: "audioBufferLimitMs") as? NSNumber)?.intValue == (hasAudioSetting ? 144 : 80),
+        "Audio preference must survive, or receive the 80 ms default")
 require((settings[0].value(forKey: "width") as? NSNumber)?.intValue == 2560,
         "Custom width must survive")
 require((settings[0].value(forKey: "height") as? NSNumber)?.intValue == 1440,
@@ -79,4 +82,4 @@ let host = apps[0].value(forKey: "host") as? NSManagedObject
 require(host?.value(forKey: "uuid") as? String == "saved-host-uuid",
         "Host/app relationship must survive")
 try coordinator.remove(store)
-print("PASS: v1.0 → current migration preserves settings, host, app, and hidden state")
+print("PASS: v\(sourceVersion) → current migration preserves settings, host, app, and hidden state")

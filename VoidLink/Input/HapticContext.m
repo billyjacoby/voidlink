@@ -10,7 +10,10 @@
 //
 
 #import "HapticContext.h"
-#import "DataManager.h"
+#import "AppDelegate.h"
+#import "TemporaryHost.h"
+#import "TemporaryApp.h"
+#import "VoidLink-Swift.h"
 
 @import CoreHaptics;
 @import GameController;

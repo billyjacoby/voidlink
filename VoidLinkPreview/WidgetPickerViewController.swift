@@ -95,9 +95,13 @@ public final class WidgetPickerViewController: UIViewController {
 
     public override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
+
         #if compiler(>=6.4)
         if #available(iOS 27.1, *) {
-            presentationState.isVerticalBarLeading = traitCollection.verticalBarEdge == .leading
+            let isVerticalBarLeading = traitCollection.verticalBarEdge == .leading
+            if presentationState.isVerticalBarLeading != isVerticalBarLeading {
+                presentationState.isVerticalBarLeading = isVerticalBarLeading
+            }
         }
         #endif
     }

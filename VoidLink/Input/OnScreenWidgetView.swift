@@ -12,7 +12,7 @@ import ObjectiveC.runtime
 
 @objc class OnScreenWidgetView: UIButton {
     @objc(widgetWithCmdString:buttonLabel:shape:profile:)
-    class func widget(cmdString: String, buttonLabel: String, shape: String, profile: OSCProfile) -> OnScreenWidgetView {
+    class func widget(cmdString: String, buttonLabel: String, shape: String, profile: OSCProfile) -> OnScreenWidgetView? {
         return OnScreenWidgetView(cmdString: cmdString, buttonLabel: buttonLabel, shape: shape, profile: profile)
     }
 
@@ -275,7 +275,7 @@ import ObjectiveC.runtime
     @objc public var hasAutoTap: Bool = false
     @objc public var isMousePadWithButtonActions: Bool = false
     @objc public var hasInertia: Bool = false
-    @objc public var isFunctionalButton: Bool = false
+    @objc public var isRegularFunctionalButton: Bool = false
     @objc public var isMotionControlButton: Bool = false
     @objc public var isTapToToggleException: Bool = false
     @objc public var hasHapticFeedback: Bool = false
@@ -463,7 +463,7 @@ import ObjectiveC.runtime
     @objc static public var isTweakingHighlight: Bool = false
     
     // discreteWheels
-    private var tickCycle: UInt8 = UIScreen.main.maximumFramesPerSecond > 110 ? 20 : 10
+    private var tickCycle: UInt8 = PublicUtils.currentScreen.maximumFramesPerSecond > 110 ? 20 : 10
     private var tickFlag: UInt8 = 0
 
     @objc public var folded: Bool = false
@@ -478,10 +478,9 @@ import ObjectiveC.runtime
     }
     @objc public var standardFoldingInterval: TimeInterval = 0.05
     static weak var capturer: OnScreenWidgetView?
-    @objc static weak var deepestButton: OnScreenWidgetView?
     @objc static var autoDockEnabledFolders: Set<OnScreenWidgetView>?
 
-    @objc init(cmdString: String, buttonLabel: String, shape:String, profile:OSCProfile) {
+    @objc init?(cmdString: String, buttonLabel: String, shape:String, profile:OSCProfile) {
 
         self.cmdString = cmdString
         self.touchPadString = ""
@@ -565,6 +564,8 @@ import ObjectiveC.runtime
         // helps widget panel to hide/show stacks
         self.accessWidgetAttributes()
         
+        if PublicUtils.isSimulator && self.widgetType == .touchPad {return nil}
+
         if self.widgetType == WidgetTypeEnum.button {
             if !self.touchPadString.isEmpty {
                 self.mouseButtonAction = MouseButtonAction.noClick
@@ -582,9 +583,14 @@ import ObjectiveC.runtime
             if self.cmdString.contains("FOLDER") || self.cmdString.contains("LABELEDFOLDER") {
                 self.functionalButtonString = "FOLDER"
             }
-            if self.isFunctionalButton {
+            if self.isRegularFunctionalButton {
                 self.buttonMode = .movable
                 if self.functionalButtonString == "PENCILHOVER" {self.buttonMode = .regular}
+            }
+            if self.functionalButtonString == "PUSHTOTALK" {
+                self.buttonMode = .tapToToggle
+                self.highlightAlpha = 0.5
+                self.highlightSizeFactor = 0.56
             }
         }
         
@@ -619,7 +625,7 @@ import ObjectiveC.runtime
             }
         }
         if self.widgetType == .button {
-            if self.isFolder || self.isFunctionalButton {
+            if self.isFolder || self.isRegularFunctionalButton {
                 self.widthFactor = PublicUtils.isIPhone ? 0.88 : 1.17
                 self.heightFactor = PublicUtils.isIPhone ? 0.56 : 0.77
             }
@@ -688,7 +694,7 @@ import ObjectiveC.runtime
         self.hasAutoTap = self.widgetType == WidgetTypeEnum.button && self.functionalButtonString == "" && self.motionControlButtonString == ""
         self.isMousePadWithButtonActions = CommandManager.mousePadWithButtonActions.contains(self.touchPadString) && widgetType == WidgetTypeEnum.touchPad
         self.hasInertia = CommandManager.inertialTouchPads.contains(self.touchPadString)
-        self.isFunctionalButton = self.functionalButtonString != "" || self.cmdString.contains("+")
+        self.isRegularFunctionalButton = (self.functionalButtonString != "" || self.cmdString.contains("+")) && !CommandManager.freeModeFunctionalButtons.contains(self.functionalButtonString)
         self.isMotionControlButton = !self.motionControlButtonString.isEmpty
         self.isTapToToggleException = (self.functionalButtonString == "NOSINGLETOUCH"
                                        || self.functionalButtonString == "PENCILHOVER"
@@ -1135,11 +1141,13 @@ import ObjectiveC.runtime
         let layers = viewportGeometryLayers
         for (key, newLayer) in layers {
             guard let state = previous[key] else { continue }
+            // Setup routines default highlights to hidden and wheel rotation to zero.
+            // Preserve those interaction states while accepting the new geometry.
             if key != "widget" {
                 newLayer.isHidden = state.hidden
                 newLayer.opacity = state.opacity
-                // Only wheel roots contain input rotation. SVG descendants contain
-                // newly computed scale transforms which must retain their new values.
+                // Only wheel roots contain input rotation. Descendant SVG transforms
+                // contain the newly calculated scale and must keep their target values.
                 if newLayer === stickWheelLayer || newLayer === stickWheelLayerSmall {
                     newLayer.transform = state.transform
                 }
@@ -1149,6 +1157,7 @@ import ObjectiveC.runtime
                 newLayer.removeAnimation(forKey: "viewport.\(property)")
             }
         }
+        // A pressed touch indicator follows its original relative location in the pad.
         if !l3r3Indicator.isHidden, oldBounds.width > 0, oldBounds.height > 0,
            let old = previousLayers.first(where: { $0.value === l3r3Indicator }),
            let position = previous[old.key]?.geometry["position"] as? NSValue {
@@ -1159,8 +1168,8 @@ import ObjectiveC.runtime
         CATransaction.commit()
         isUpdatingViewportGeometry = false
 
-        // Geometry builders disable implicit actions; explicitly match UIKit's
-        // transition timeline instead of rebuilding controls or restarting input.
+        // The geometry builders deliberately disable implicit actions. Animate their
+        // final model values explicitly on the same timeline as the UIKit transition.
         guard duration > 0 else { return }
         let timing: CAMediaTimingFunctionName
         switch curve {
@@ -1185,7 +1194,6 @@ import ObjectiveC.runtime
     // 仅在加载控件时调用
     private func denormalizeSize(sizeFactor:CGFloat) -> CGFloat {
         let referenceLen = sizeReferenceLength
-        
         // return CGFloat(Int(sizeFactor/10000*screenWidthInPoints/2)*2);
         // print("referenceLen \(referenceLen), \(CACurrentMediaTime())")
         return nearestEven(sizeFactor/10000*referenceLen);
@@ -1196,7 +1204,6 @@ import ObjectiveC.runtime
         let longSideLen = max(viewport.width, viewport.height)
         let shortSideLen = min(viewport.width, viewport.height)
         let shortToLongRatio = longSideLen > 0 ? shortSideLen/longSideLen : 1
-        
         baselineDiameter = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 60 : 60*shortToLongRatio
         
         baselineWidth = self.sizeReference == WidgetSizeReference.longSide.rawValue ? 70 : 70*shortToLongRatio
@@ -1287,7 +1294,7 @@ import ObjectiveC.runtime
             labelStackView.centerYAnchor.constraint(equalTo: centerYAnchor),])
 
         NSLayoutConstraint.activate(sizingConstraints)
-        
+
         if self.shape != "round"{
             self.setSquareWidgetCornerRadius()
         }
@@ -1299,7 +1306,7 @@ import ObjectiveC.runtime
         let aspectRatio = longSideLen / max(shortSideLen, 1)
         let aspectProgress = min(max((aspectRatio - 1) / 1.6, 0), 1)
         let radiusRatio = 0.34 - aspectProgress * 0.08
-        let minRadius: CGFloat = min(16, shortSideLen/2)
+        let minRadius: CGFloat = min((PublicUtils.isFoldableRAMCached || !PublicUtils.isIPhone) ? 0 : 16, shortSideLen/2)
         let maxRadius: CGFloat = 30
         return min(max(shortSideLen * radiusRatio, minRadius), maxRadius)
     }
@@ -2882,7 +2889,7 @@ import ObjectiveC.runtime
                     if !captured || !isSlidableButton {continue}
                     // print("UIButton: \(widget.buttonLabel) out test, \(widget.touchPadString), \(CACurrentMediaTime())")
                     if(widget.buttonMode == .slideToToggle || widget.buttonMode == .movable || widget.buttonMode == .regular){
-                        widget.handleFingerUpOrSlideout(leaveNonSkillButtonAlone: widget.isFunctionalButton || widget.containsShortcutAction)
+                        widget.handleFingerUpOrSlideout(leaveNonSkillButtonAlone: widget.isRegularFunctionalButton || widget.containsShortcutAction)
                         setLock.lock()
                         widget.capturedTouches.remove(touch)
                         setLock.unlock()
@@ -3316,11 +3323,27 @@ import ObjectiveC.runtime
         case "PENCILHOVER":
             if !self.isPencilProEnabled() {break}
             self.functionalWidgetDelegate?.enablePencilHover()
+        case "PUSHTOTALK":
+#if !os(tvOS)
+            let redirectMic = DataManager().getSettings()?.redirectMic ?? false
+            guard GenericUtils.canActivatePushToTalk(in: self.parentViewController, redirectMic: redirectMic) else { return }
+            pushToTalkActivated = true
+            MicHandler.requestPermission { granted in
+                guard granted else {
+                    MicHandler.requestPermission(nil)
+                    return
+                }
+            }
+#endif
+            MicHandler.sharedInstance?.setMicMuted(false)
         default:
             break
         }
     }
     
+#if !os(tvOS)
+    private var pushToTalkActivated = false
+#endif
     private var movableButtonReleased:Bool = true
     private func moveableButtonLongPressed() -> Bool{
         return !movableButtonReleased && CACurrentMediaTime() - self.touchTapTimeStamp > 0.05
@@ -3386,6 +3409,12 @@ import ObjectiveC.runtime
             self.functionalWidgetDelegate?.alterAbsTouchDragWith(mouseButton:BUTTON_LEFT)
         case "GAMEPADOVERLAY":
             self.gamepadOverlayButtonUp()
+        case "PUSHTOTALK":
+#if !os(tvOS)
+            guard pushToTalkActivated else { return }
+            pushToTalkActivated = false
+#endif
+            MicHandler.sharedInstance?.setMicMuted(true)
 #if !os(tvOS)
         case "PENCILHOVER":
             if !self.isPencilProEnabled() {break}
@@ -4092,7 +4121,6 @@ import ObjectiveC.runtime
         
         if let deepstButton = OnScreenWidgetView.deepestButton {
             self.superview?.insertSubview(self, belowSubview: deepstButton)
-            OnScreenWidgetView.deepestButton = self
         }
         
         guard let hostView = superview,
@@ -4139,6 +4167,7 @@ import ObjectiveC.runtime
                 self.alpha = OnScreenWidgetView.autoDockInitialAlpha
             } completion: { _ in
                 self.isUserInteractionEnabled = true
+                // self.superview?.bringSubviewToFront(self)
                 self.autoDockStopSettledAlphaTimer()
                 self.autoDockSettledAlphaTimer = Timer.scheduledTimer(withTimeInterval: OnScreenWidgetView.autoDockSettledAlphaDelay, repeats: false) { [weak self] _ in
                     guard let self, self.autoDockIsDocked else { return }
@@ -4442,10 +4471,6 @@ import ObjectiveC.runtime
     @objc static func set(folded:Bool, for folder:OnScreenWidgetView) { // folder综合逻辑
         guard folder.isFolder else {return}
         
-        if !folded {
-            OnScreenWidgetView.deepestButton = OnScreenWidgetView.getDeepestButton()
-        }
-        
         OnScreenWidgetView.profileChangedDuringStreaming = true
         setCollection(folded: folded, for: folder, isExclusiveFolderAction: folder.revealMode == .exclusive)
         
@@ -4651,7 +4676,7 @@ import ObjectiveC.runtime
         isRestoringFolderStates = false
     }
     
-    @objc static func getDeepestButton() -> OnScreenWidgetView?{
+    @objc static var deepestButton: OnScreenWidgetView?{
         var maxIndex: Int = Int.max
         var deepestButton: OnScreenWidgetView?
         for widget in OnScreenWidgetView.mapping.values.filter({ $0.widgetType == .button}){
@@ -4664,7 +4689,6 @@ import ObjectiveC.runtime
             }
             else {continue}
         }
-        OnScreenWidgetView.deepestButton = deepestButton
         return deepestButton
     }
     
@@ -4703,6 +4727,10 @@ import ObjectiveC.runtime
                 if ControllerUtil.gamepadArrivalReported {self.sendComboButtonsUpEvent(comboStrings: self.comboButtonStrings)}
                 self.functionalWidgetDelegate?.alterAbsTouchDragWith(mouseButton:BUTTON_LEFT)
             }
+            if self.functionalButtonString == "PUSHTOTALK" && self.logicallyDown {
+                MicHandler.sharedInstance?.setMicMuted(true)
+            }
+
             buttonDownVisualEffectLayer.removeFromSuperlayer()
             for trackPoint in trackPointPool {
                 trackPoint.removeFromSuperlayer()
@@ -4738,7 +4766,7 @@ import ObjectiveC.runtime
             frame: CGRect(
                 x: 0,
                 y: 0,
-                width: UIScreen.main.bounds.width * 2,
+                width: PublicUtils.currentScreen.bounds.width * 2,
                 height: 2
             )
         )
@@ -4756,7 +4784,7 @@ import ObjectiveC.runtime
                 x: 0,
                 y: 0,
                 width: 2,
-                height: UIScreen.main.bounds.height * 2
+                height: PublicUtils.currentScreen.bounds.height * 2
             )
         )
         v.backgroundColor = .blue
@@ -4774,6 +4802,9 @@ import ObjectiveC.runtime
 
     private static func updateStreamViewGuidelines(for widget:OnScreenWidgetView){
         if !widget.moveableButtonLongPressed() {return}
+        let screenBounds = PublicUtils.screen(for: widget).bounds
+        horizontalGuideline.bounds.size = CGSize(width: screenBounds.width * 2, height: 2)
+        verticalGuideline.bounds.size = CGSize(width: 2, height: screenBounds.height * 2)
         if horizontalGuideline.superview == nil {
             widget.addSubview(horizontalGuideline)
             widget.addSubview(verticalGuideline)

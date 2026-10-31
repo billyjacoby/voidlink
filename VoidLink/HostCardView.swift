@@ -301,7 +301,7 @@ class HostCardView: UIView {
 #if !os(tvOS)
         let defaultButtonType: UIButton.ButtonType = .system
 #else
-        let defaultButtonType: UIButton.ButtonType = .plain
+        let defaultButtonType: UIButton.ButtonType = .custom
 #endif
 
         appButton = UIButton(type: defaultButtonType)
@@ -398,7 +398,7 @@ class HostCardView: UIView {
             separatorLine.leadingAnchor.constraint(equalTo: leadingAnchor, constant: cardContentpadding),
             separatorLine.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -cardContentpadding),
             separatorLine.centerYAnchor.constraint(equalTo: iconBackgroundView.bottomAnchor, constant: iconAndButtonSpacing / 2),
-            separatorLine.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
+            separatorLine.heightAnchor.constraint(equalToConstant: 1 / PublicUtils.screen(for: self).scale),
         ])
 
         transparentButton = UIButton(type: .custom)

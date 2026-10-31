@@ -7,7 +7,10 @@
 //
 
 #import "IdManager.h"
-#import "DataManager.h"
+#import "AppDelegate.h"
+#import "TemporaryHost.h"
+#import "TemporaryApp.h"
+#import "VoidLink-Swift.h"
 
 @implementation IdManager
 

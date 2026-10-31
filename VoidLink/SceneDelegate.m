@@ -1,12 +1,19 @@
 #import "SceneDelegate.h"
 #import "StreamFrameViewController.h"
-#import "SettingsViewController.h"
-#import "SWRevealViewController.h"
-#import "VoidLink-Swift.h"
-#if TARGET_OS_TV
 #import <GameController/GameController.h>
-#import "MainFrameViewController.h"
+#import "VoidLink-Swift.h"
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && !TARGET_OS_VISION && __has_include(<UIKit/UISceneAccessory.h>)
+#import <UIKit/UISceneAccessory.h>
+#import <UIKit/UISceneAccessoryRegistration.h>
+#define VL_HAS_EXTERNAL_DISPLAY_ACCESSORY 1
+#else
+#define VL_HAS_EXTERNAL_DISPLAY_ACCESSORY 0
 #endif
+#import "MainFrameViewController.h"
+#import "SWRevealViewController.h"
+
+NSNotificationName const VoidLinkTvOSRemoteMenuTappedNotification = @"VoidLinkTvOSRemoteMenuTappedNotification";
+NSNotificationName const VoidLinkTvOSRemotePlayPauseTappedNotification = @"VoidLinkTvOSRemotePlayPauseTappedNotification";
 
 #if TARGET_OS_TV
 static BOOL VoidLinkTvOSFocusItemIsSink(id item) {
@@ -33,8 +40,7 @@ static BOOL VoidLinkTvOSFocusItemIsSink(id item) {
 @implementation VoidLinkNoFocusWindow
 
 - (BOOL)shouldUpdateFocusInContext:(UIFocusUpdateContext *)context {
-    NSLog(@"shouldUpdateFocusInContext .........");
-    return context.nextFocusedItem == nil || VoidLinkTvOSFocusItemIsSink(context.nextFocusedItem);
+    return VoidLinkTvOSShouldUpdateFocus(context, self);
 }
 
 @end
@@ -49,22 +55,27 @@ static BOOL VoidLinkTvOSFocusItemIsSink(id item) {
 }
 
 - (BOOL)shouldUpdateFocusInContext:(UIFocusUpdateContext *)context {
-    NSLog(@"shouldUpdateFocusInContext .........");
-    return context.nextFocusedItem == nil || VoidLinkTvOSFocusItemIsSink(context.nextFocusedItem);
+    return VoidLinkTvOSShouldUpdateFocus(context, self.view.window);
 }
 
 @end
 
+#endif
+
 @interface VoidLinkControllerRootViewController : GCEventViewController
 
 - (instancetype)initWithContentViewController:(UIViewController *)contentViewController;
+#if TARGET_OS_TV
 - (void)forceFocusSinkUpdate;
+#endif
 
 @end
 
 @implementation VoidLinkControllerRootViewController {
     UIViewController *_contentViewController;
+#if TARGET_OS_TV
     VoidLinkFocusSinkView *_focusSinkView;
+#endif
 }
 
 - (instancetype)initWithContentViewController:(UIViewController *)contentViewController {
@@ -87,7 +98,6 @@ static BOOL VoidLinkTvOSFocusItemIsSink(id item) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.controllerUserInteractionEnabled = NO;
-
     if (!_contentViewController || _contentViewController.parentViewController == self) {
         return;
     }
@@ -103,7 +113,19 @@ static BOOL VoidLinkTvOSFocusItemIsSink(id item) {
     ]];
     [_contentViewController didMoveToParentViewController:self];
 
+#if TARGET_OS_TV
     [self installFocusSinkIfNeeded];
+#endif
+}
+
+#if TARGET_OS_TV
+- (void)setControllerUserInteractionEnabled:(BOOL)enabled {
+    BOOL changed = self.controllerUserInteractionEnabled != enabled;
+    [super setControllerUserInteractionEnabled:enabled];
+    _focusSinkView.hidden = enabled;
+    if (_focusSinkView && changed && !enabled) {
+        [self forceFocusSinkUpdate];
+    }
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -134,10 +156,16 @@ static BOOL VoidLinkTvOSFocusItemIsSink(id item) {
 }
 
 - (void)forceFocusSinkUpdate {
+    if (self.controllerUserInteractionEnabled) {
+        return;
+    }
     [self installFocusSinkIfNeeded];
     [self setNeedsFocusUpdate];
     [self updateFocusIfNeeded];
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.controllerUserInteractionEnabled) {
+            return;
+        }
         [self.view bringSubviewToFront:self->_focusSinkView];
         [self setNeedsFocusUpdate];
         [self updateFocusIfNeeded];
@@ -145,7 +173,7 @@ static BOOL VoidLinkTvOSFocusItemIsSink(id item) {
 }
 
 - (NSArray<id<UIFocusEnvironment>> *)preferredFocusEnvironments {
-    if (_focusSinkView) {
+    if (_focusSinkView && !self.controllerUserInteractionEnabled) {
         return @[_focusSinkView];
     }
     return [super preferredFocusEnvironments];
@@ -156,11 +184,66 @@ static BOOL VoidLinkTvOSFocusItemIsSink(id item) {
 }
 
 - (BOOL)shouldUpdateFocusInContext:(UIFocusUpdateContext *)context {
-    NSLog(@"shouldUpdateFocusInContext .........");
-    return context.nextFocusedItem == nil || VoidLinkTvOSFocusItemIsSink(context.nextFocusedItem);
+    return VoidLinkTvOSShouldUpdateFocus(context, self.view.window);
+}
+#endif
+
+- (UIViewController *)childViewControllerForStatusBarStyle {
+    return _contentViewController;
+}
+
+- (UIViewController *)childViewControllerForStatusBarHidden {
+    return _contentViewController;
+}
+
+- (UIViewController *)childViewControllerForHomeIndicatorAutoHidden {
+    return _contentViewController;
+}
+
+- (UIViewController *)childViewControllerForScreenEdgesDeferringSystemGestures {
+    return _contentViewController;
+}
+
+#if !TARGET_OS_TV
+- (UIViewController *)childViewControllerForPointerLock {
+    return _contentViewController;
+}
+#endif
+
+- (BOOL)shouldAutorotate {
+    return _contentViewController.shouldAutorotate;
+}
+
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    __weak UIWindow *window = self.viewIfLoaded.window;
+    [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {} completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        // Re-read the final traits and safe area after the transition settles.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.06 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [GamepadNavigationIllustrationHud refreshForWindowTransition:window];
+        });
+    }];
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return _contentViewController.supportedInterfaceOrientations;
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
+    return _contentViewController.preferredInterfaceOrientationForPresentation;
 }
 
 @end
+
+#if TARGET_OS_TV
+BOOL VoidLinkTvOSShouldUpdateFocus(UIFocusUpdateContext *context, UIWindow *window) {
+    UIViewController *root = window.rootViewController;
+    if ([root isKindOfClass:[VoidLinkControllerRootViewController class]] &&
+        ((VoidLinkControllerRootViewController *)root).controllerUserInteractionEnabled) {
+        return YES;
+    }
+    return context.nextFocusedItem == nil || VoidLinkTvOSFocusItemIsSink(context.nextFocusedItem);
+}
 #endif
 
 API_AVAILABLE(ios(13.0), tvos(13.0))
@@ -171,6 +254,15 @@ static __weak UIView *_sharedStreamVideoRenderView = nil;
 static __weak UIView *_localRenderContainer = nil;
 static UIViewAutoresizing _localRenderAutoresizingMask;
 static UIWindow *_externalSceneWindow = nil;
+
+static BOOL VLIsExternalDisplaySession(UISceneSession *session) {
+    if (@available(iOS 16.0, tvOS 16.0, *)) {
+        if ([session.role isEqualToString:UIWindowSceneSessionRoleExternalDisplayNonInteractive]) {
+            return YES;
+        }
+    }
+    return [session.role isEqualToString:UIWindowSceneSessionRoleExternalDisplay];
+}
 
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {
     if (![scene isKindOfClass:[UIWindowScene class]]) {
@@ -183,10 +275,12 @@ static UIWindow *_externalSceneWindow = nil;
 #else
         self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
 #endif
+        [PublicUtils refreshCurrentScreenForWindow:self.window];
         [PublicUtils prepareFoldableIPhoneDetectionInWindow:self.window completion:^{
             [self finishConnectingMainAppScene];
         }];
-    } else if ([session.role isEqualToString:UIWindowSceneSessionRoleExternalDisplay]) {
+
+    } else if (VLIsExternalDisplaySession(session)) {
         Log(LOG_I, @"SceneDelegate: External display scene connecting for screen: %@", ((UIWindowScene *)scene).screen.description);
 #if TARGET_OS_TV
         _externalSceneWindow = [[VoidLinkNoFocusWindow alloc] initWithWindowScene:windowScene];
@@ -206,6 +300,7 @@ static UIWindow *_externalSceneWindow = nil;
 #if !TARGET_OS_TV
     if (@available(iOS 17.0, *)) {
         if ([ThemeManager pinsSystemStyleForFoldable]) {
+            // Observe above the pinned windows so System still follows Control Center.
             [self.window.windowScene registerForTraitChanges:@[UITraitUserInterfaceStyle.class]
                                                 withHandler:^(__kindof id<UITraitEnvironment> environment, UITraitCollection *previousCollection) {
                 [ThemeManager systemUserInterfaceStyleDidChange:environment.traitCollection.userInterfaceStyle];
@@ -246,12 +341,28 @@ static UIWindow *_externalSceneWindow = nil;
         initialViewController = revealViewController;
     }
 #endif
-#if TARGET_OS_TV
     self.window.rootViewController = [[VoidLinkControllerRootViewController alloc] initWithContentViewController:initialViewController];
-#else
-    self.window.rootViewController = initialViewController;
-#endif
     [self.window makeKeyAndVisible];
+#if !TARGET_OS_TV
+    // Keep the actual menu's geometry listener alive even before its first reveal.
+    if ([initialViewController isKindOfClass:SWRevealViewController.class]) {
+        SWRevealViewController *reveal = (SWRevealViewController *)initialViewController;
+        if ([reveal.rearViewController isKindOfClass:SettingsViewController.class]) {
+            SettingsViewController *settings = (SettingsViewController *)reveal.rearViewController;
+            UIViewController *front = reveal.frontViewController;
+            if ([front isKindOfClass:UINavigationController.class]) {
+                front = ((UINavigationController *)front).viewControllers.firstObject;
+            }
+            if ([front isKindOfClass:MainFrameViewController.class]) {
+                settings.mainFrameViewController = (MainFrameViewController *)front;
+                ((MainFrameViewController *)front).settingsViewController = settings;
+            }
+            [settings loadViewIfNeeded];
+        }
+    }
+    [self notifyResolutionGeometryChangedForScene:self.window.windowScene];
+#endif
+    // The streaming controller owns accessory registration in this fork.
 #if TARGET_OS_TV
     // SWReveal keeps the rear controller unloaded until it is revealed.
     // Preheat the SwiftUI settings hierarchy without consuming its
@@ -348,18 +459,28 @@ static UIWindow *_externalSceneWindow = nil;
 
 - (void)windowScene:(UIWindowScene *)windowScene didUpdateEffectiveGeometry:(UIWindowSceneGeometry *)previousEffectiveGeometry API_AVAILABLE(ios(26.0), tvos(26.0)) {
     [PublicUtils refreshCurrentScreenForWindow:self.window];
-    if (windowScene == self.window.windowScene && [self.window.rootViewController isKindOfClass:[SWRevealViewController class]]) {
-        SWRevealViewController *reveal = (SWRevealViewController *)self.window.rootViewController;
-        if ([reveal.rearViewController isKindOfClass:[SettingsViewController class]]) {
-            [(SettingsViewController *)reveal.rearViewController refreshSwiftUISettingsGeometry];
-        }
+    [self notifyResolutionGeometryChangedForScene:windowScene];
+}
+
+#if !TARGET_OS_TV
+- (void)windowScene:(UIWindowScene *)windowScene didUpdateCoordinateSpace:(id<UICoordinateSpace>)previousCoordinateSpace interfaceOrientation:(UIInterfaceOrientation)previousInterfaceOrientation traitCollection:(UITraitCollection *)previousTraitCollection {
+    [PublicUtils refreshCurrentScreenForWindow:self.window];
+    [self notifyResolutionGeometryChangedForScene:windowScene];
+}
+#endif
+
+- (void)notifyResolutionGeometryChangedForScene:(UIWindowScene *)windowScene {
+    if (self.window && self.window.windowScene == windowScene &&
+        [windowScene.session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:PublicUtils.windowGeometryDidChangeNotification
+                                                          object:self.window];
     }
 }
 
 - (void)sceneDidDisconnect:(UIScene *)scene {
     Log(LOG_I, @"SceneDelegate: Scene disconnected: %@, role: %@", scene.title, scene.session.role);
 
-    if ([scene.session.role isEqualToString:UIWindowSceneSessionRoleExternalDisplay]) {
+    if (VLIsExternalDisplaySession(scene.session)) {
         if ([scene isKindOfClass:[UIWindowScene class]]) {
             UIWindowScene *windowScene = (UIWindowScene *)scene;
             if (_externalSceneWindow.windowScene == windowScene) {
@@ -368,6 +489,7 @@ static UIWindow *_externalSceneWindow = nil;
                 _externalSceneWindow = nil;
                 self.window = nil;
                 Log(LOG_I, @"SceneDelegate: External display scene fully disconnected and cleaned up.");
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"ScreenChanged" object:windowScene];
             } else {
                 Log(LOG_W, @"SceneDelegate: Disconnecting scene is not the one holding our _externalSceneWindow.");
             }

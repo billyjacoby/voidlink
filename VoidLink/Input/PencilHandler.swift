@@ -34,6 +34,8 @@ import UIKit
     @objc static private(set) var isDrawing: Bool = false
     @objc static private(set) var pencilPausesNativeTouch: Bool = false
     
+    @objc static var barrelRollChanged: Bool = false
+    
     @objc var disableTilt: Bool = false
 
     // static private let oscProfileMan = OSCProfilesManager.sharedManager(CGRectZero)
@@ -64,13 +66,14 @@ import UIKit
 
     @objc init(streamView: UIView, settings: TemporarySettings) {
         self.streamView = streamView
-        streamAspectRatio = settings.width.floatValue/settings.height.floatValue
+        streamAspectRatio = (streamView as? StreamView).map { Float($0.streamAspectRatio) }
+            ?? settings.width.floatValue/settings.height.floatValue
         tickInterval = TimeInterval(settings.pencilTickIntervalUs.floatValue/1000000)
-        manualTick = settings.pencilTickMode.intValue == PencilTickMode.ManualTick.rawValue
-        pencilTickEnabled = settings.pencilTickMode.intValue != PencilTickMode.PencilTickDisabled.rawValue
+        manualTick = settings.pencilTickMode.intValue == PencilTickMode.manualTick.rawValue
+        pencilTickEnabled = settings.pencilTickMode.intValue != PencilTickMode.disabled.rawValue
         pencilTipOffset = CGPoint(x: CGFloat(settings.pencilTipOffsetX?.floatValue ?? 0),
                                   y: CGFloat(settings.pencilTipOffsetY?.floatValue ?? 0))
-        // initialMoveEventIndexLimit = UIScreen.main.maximumFramesPerSecond > 60 ? 4 : 2
+        // initialMoveEventIndexLimit = PublicUtils.currentScreen.maximumFramesPerSecond > 60 ? 4 : 2
         initialMoveEventIndexLimit = 0
         super.init()
         setupPressureLUT()
@@ -167,9 +170,9 @@ import UIKit
     }
 
     private var previousTipLocation: CGPoint?
-    private var refreshRate: CGFloat = {
-        return CGFloat(UIScreen.main.maximumFramesPerSecond)
-    }()
+    private var refreshRate: CGFloat {
+        return CGFloat(PublicUtils.screen(for: streamView).maximumFramesPerSecond)
+    }
     
     private func speed(of touch:UITouch) -> CGFloat {
         guard let previousTipLocation else { return 0 }
@@ -246,6 +249,9 @@ import UIKit
     
     func getVideoAreaSize()-> CGSize {
         guard let streamView = streamView else { return CGSize(width: 0, height: 0) }
+        if let streamView = streamView as? StreamView {
+            return streamView.inputGeometry.videoRect.size
+        }
         if streamView.bounds.size.width > streamView.bounds.size.height * CGFloat(streamAspectRatio) {
             return CGSizeMake(streamView.bounds.size.height * CGFloat(streamAspectRatio), streamView.bounds.size.height);
         } else {
@@ -297,6 +303,22 @@ import UIKit
         let tilt = disableTilt ? 0 : UInt8(90 - min(90, Int(altitudeDegs)))
         return tilt
     }
+
+    private var previousRollAngle: CGFloat?
+    @available(iOS 17.5, *)
+    func getBarrelRoll(fromRollAngle rollAngle: CGFloat) -> UInt16 {
+        if let previousRollAngle = previousRollAngle, !PencilHandler.barrelRollChanged {
+            PencilHandler.barrelRollChanged = rollAngle != previousRollAngle
+        }
+        else {
+            previousRollAngle = rollAngle
+        }
+        let degrees = rollAngle * 180.0 / .pi
+        let uiKitRoll = (degrees.truncatingRemainder(dividingBy: 360.0) + 360.0)
+            .truncatingRemainder(dividingBy: 360.0)
+        let twist = (360.0 - uiKitRoll).truncatingRemainder(dividingBy: 360.0)
+        return UInt16(twist.rounded()) % 360
+    }
     
     private func getNormalizedLocation(point: CGPoint) -> CGPoint {
         let location = self.adjustCoordinatesForVideoArea(point: point)
@@ -323,6 +345,12 @@ import UIKit
                 .applying(CGAffineTransform(translationX: pencilTipOffset.x, y: pencilTipOffset.y))
             let azimuth = touch.azimuthAngle(in: streamView)
             let altitude = touch.altitudeAngle
+            let barrelRoll: UInt16
+            if #available(iOS 17.5, *) {
+                barrelRoll = pencilProEnabled ? self.getBarrelRoll(fromRollAngle: touch.rollAngle) : UInt16(LI_BARREL_ROLL_UNKNOWN)
+            } else {
+                barrelRoll = UInt16(LI_BARREL_ROLL_UNKNOWN)
+            }
             let normalizedLocation = self.getNormalizedLocation(point: point)
             var force = Float(touch.force/touch.maximumPossibleForce)/sin(Float(altitude))
             force  = (self.pencilTickEnabled && force == 0) ? previousForce : force
@@ -396,18 +424,18 @@ import UIKit
                 }
                 */
                 
-                if self.strokePhase != .phase1 || !self.pencilTickEnabled {LiSendPenEvent(eventType, UInt8(LI_TOOL_TYPE_PEN), 0, Float(normalizedLocation.x), Float(normalizedLocation.y), sendableForce, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)))}
+                if self.strokePhase != .phase1 || !self.pencilTickEnabled {LiSendPenEventWithBarrelRoll(eventType, UInt8(LI_TOOL_TYPE_PEN), 0, Float(normalizedLocation.x), Float(normalizedLocation.y), sendableForce, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)}
                 else {
-                    LiSendPenEvent(UInt8(LI_TOUCH_EVENT_HOVER), UInt8(LI_TOOL_TYPE_PEN), 0, Float(normalizedLocation.x), Float(normalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)))
+                    LiSendPenEventWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER), UInt8(LI_TOOL_TYPE_PEN), 0, Float(normalizedLocation.x), Float(normalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)
                 }
                 
                 if eventType == UInt8(LI_TOUCH_EVENT_UP) {
                     PencilHandler.isDrawing = false
                     if PencilHandler.pencilAndHoverMode == .hoverDisabled || !PencilHandler.hoverSupported {
-                        LiSendPenEvent(UInt8(LI_TOUCH_EVENT_HOVER), UInt8(LI_TOOL_TYPE_PEN), 0, Float(normalizedLocation.x), Float(normalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)))
+                        LiSendPenEventWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER), UInt8(LI_TOOL_TYPE_PEN), 0, Float(normalizedLocation.x), Float(normalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)
                         DispatchQueue.global().asyncAfter(deadline: .now() + 0.0086){
                             if !PencilHandler.isDrawing {
-                                LiSendPenEvent(UInt8(LI_TOUCH_EVENT_HOVER_LEAVE), UInt8(LI_TOOL_TYPE_PEN), 0, Float(normalizedLocation.x), Float(normalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)))
+                                LiSendPenEventWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER_LEAVE), UInt8(LI_TOOL_TYPE_PEN), 0, Float(normalizedLocation.x), Float(normalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)
                             }
                         }
                     }
@@ -746,5 +774,4 @@ import UIKit
             }
         }
     }
-
 }

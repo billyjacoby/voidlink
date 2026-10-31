@@ -137,7 +137,6 @@
 
 
 #import <UIKit/UIKit.h>
-#import "DataManager.h"
 
 
 @class SWRevealViewController;
@@ -357,15 +356,7 @@ typedef enum
 
 #pragma mark - RearNavigationBarMenuDelegate Protocol
 
-@protocol RearNavigationBarMenuDelegate<NSObject>
-@optional
-- (void)switchToFavoriteSettings;
-- (void)switchToAllSettings;
-- (SettingsMenuMode)getSettingsMenuMode;
-- (void)enterRemoveSettingItemMode;
-- (void)doneRemoveSettingItem;
-- (void)layoutSettingsView;
-@end
+// RearNavigationBarMenuDelegate is defined in Swift.
 
 
 

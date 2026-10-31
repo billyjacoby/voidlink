@@ -198,6 +198,7 @@ protocol ControllerCollectionNavigationDelegate: ControllerUINavigationDelegate 
 final class ControllerNavigator: NSObject {
     typealias Handler = (_ buttonDict: NSDictionary, _ gamepad: GCExtendedGamepad, _ element: GCControllerElement) -> Void
 
+    @objc static var shouldBlockAppControllerNavigator:Bool = false
     private static weak var listeningController: GCController?
     static weak var radialMenuDelegate: ControllerNavigatorRadialMenuDelegate?
     @objc static weak var uiNavigationDelegate: ControllerUINavigationDelegate?
@@ -499,12 +500,32 @@ final class ControllerNavigator: NSObject {
     
     private static func navigateContinuously(downward: Bool) {
         navigationTimer?.clean()
-        uiNavigationDelegate?.navigateByController(downward: downward)
+        let move: () -> Void
+        if let settings = uiNavigationDelegate as? SettingsViewController,
+           let store = settings.swiftUISettingsStore, store.isActive {
+            // Capture before either main-queue hop; centering invalidates this generation.
+            let generation = store.currentHighlightMoveGeneration
+            move = { [weak settings, weak store] in
+                PublicUtils.runOnMain {
+                    guard let settings, let store, store.isActive, settings.hasNoPresentedVC,
+                          uiNavigationDelegate === settings,
+                          generation == store.currentHighlightMoveGeneration else { return }
+                    if store.menuMode == .favorite, settingsFavoriteReorderActive {
+                        store.moveHighlightedFavorite(by: downward ? 1 : -1)
+                    } else {
+                        store.moveHighlight(by: downward ? 1 : -1, cancellationGeneration: generation)
+                    }
+                }
+            }
+        } else {
+            move = { uiNavigationDelegate?.navigateByController(downward: downward) }
+        }
+        move()
         navigationTimer = SafeTimer(
             interval: navigationContinuousRepeatInterval,
             delay: navigationInitialRepeatDelay
         ) {
-            uiNavigationDelegate?.navigateByController(downward: downward)
+            move()
         }
         navigationTimer?.restart(minimumRunCount: 0)
     }
@@ -548,7 +569,7 @@ final class ControllerNavigator: NSObject {
             if radialMenuState == .disconnectAndQuit {
                 radialMenuView?.dismiss()
                 radialMenuView = nil
-                StreamFrameViewController.sharedInstance().returnToMainFrame()
+                StreamFrameViewController.sharedInstance().disconnectRemoteSession()
                 break
             }
             else {
@@ -573,15 +594,15 @@ final class ControllerNavigator: NSObject {
                 radialMenuState = .main
                 updateRadialMenu()
             }
+        case .textInput:
+            StreamFrameViewController.sharedInstance().remoteTextInputForTvOS()
         case .theme:
             let targetTheme: UIUserInterfaceStyle = ThemeManager.userInterfaceStyle() == .light ? .dark : .light
             DispatchQueue.main.async {
                 ThemeManager.setUserInterfaceStyle(targetTheme)
 #if !os(tvOS)
-                if let mainFrameVC = radialMenuDelegate as? MainFrameViewController, let settingsViewVC = mainFrameVC.settingsViewController {
-                    settingsViewVC.appThemeSelector.selectedSegmentIndex = targetTheme.rawValue
-                }
-                // to be dealt with
+
+                // sync swiftUISettings selector for theme change: to be dealt with
 #endif
             }
             let dataMan = DataManager()
@@ -643,6 +664,9 @@ final class ControllerNavigator: NSObject {
                 if radialMenuState == .moreOptions {
                     if mainFrameVC.isStreaming() {
                         RadialMenuOverlayView.menuSectors.append(RadialMenuSector(title: "Game Profiles".localized, subtitle: "", symbol:PublicUtils.iOS18Available ? "gamecontroller.circle" : "gamecontroller.fill", item: .gameProfiles))
+                        if PublicUtils.isTVOS {
+                            RadialMenuOverlayView.menuSectors.append(RadialMenuSector(title: "Text Input".localized, subtitle: "", symbol:"keyboard.badge.ellipsis", item: .textInput))
+                        }
                         RadialMenuOverlayView.menuSectors.append(RadialMenuSector(title: "=toolbox".localized, subtitle: "", symbol: "apple.terminal", item: .toolbox))
                     }
                     else {
@@ -663,12 +687,12 @@ final class ControllerNavigator: NSObject {
                 RadialMenuOverlayView.menuSectors.append(RadialMenuSector(title: "Settings Menu".localized, subtitle: "", symbol: "sidebar.left", item: .settings))
                 
                 if mainFrameVC.settingsViewExpanded {
-                    if mainFrameVC.settingsViewController.currentSettingsMenuMode == .AllSettings {
+                    if mainFrameVC.settingsViewController.currentSettingsMenuMode == .all {
                         RadialMenuOverlayView.menuSectors.append(RadialMenuSector(title: "Favorite Settings".localized, subtitle: "", symbol: "bookmark", item: .favoriteSettings))
                         RadialMenuOverlayView.menuSectors.appendIfNotContains(gameProfileItem)
                         RadialMenuOverlayView.menuSectors.appendIfNotContains(navigationSettingsItem)
                     }
-                    if mainFrameVC.settingsViewController.currentSettingsMenuMode == .FavoriteSettings {
+                    if mainFrameVC.settingsViewController.currentSettingsMenuMode == .favorite {
                         RadialMenuOverlayView.menuSectors.append(RadialMenuSector(title: "All Settings".localized, subtitle: "", symbol: "circle.grid.3x3", item: .allSettings))
                     }
                 }
@@ -694,6 +718,7 @@ final class ControllerNavigator: NSObject {
     private static func listenToRadialMenuStick() {
         let radialMenuStick: ControllerElement = radialMenuButtonPosition == .right ? .leftStick : .rightStick
         ControllerUtil.listenPrimaryControllerStick(radialMenuStick) { offsetVector in
+            if ControllerNavigator.shouldBlockAppControllerNavigator {return}
             GamepadNavigationIllustrationHud.updateActionState(for: radialMenuStick, isInAction: hypot(offsetVector.dx, offsetVector.dy) >= 0.1)
             if let selectedItem = radialMenuView?.updateSelection(
                 xOffset: offsetVector.dx,
@@ -717,6 +742,7 @@ final class ControllerNavigator: NSObject {
         radialMenuState = .main
         radialMenuButton = mainFrameVC.isStreaming() ? streamingRadialMenuButton : localRadialMenuButton
         ControllerUtil.listenPrimaryControllerButton(radialMenuButton) { pressed in
+            if ControllerNavigator.shouldBlockAppControllerNavigator {return}
             GamepadNavigationIllustrationHud.updateActionState(for: radialMenuButton, isInAction: pressed)
             if pressed {
                 radialMenuPressDownTimestamp = CACurrentMediaTime()
@@ -742,21 +768,25 @@ final class ControllerNavigator: NSObject {
                 }
             }
             else {
-                guard CACurrentMediaTime() - radialMenuPressDownTimestamp > 0.035 else {
-                    return
-                }
-                radialMenuButtonPressed = false
-                radialMenuDelayTimer?.clean()
-                stickReleasedInRadialMenu = false
-                if radialMenuView == nil, let vc = uiNavigationDelegate as? StreamFrameViewController, vc.hasNoPresentedVC {
-                    ControllerSupport.sharedInstance()?.sendNavigationButtonPress()
-                    return
-                }
-                radialMenuView?.dismiss()
-                radialMenuView = nil
-                ControllerNavigator.updateUINavigationDelegateState()
+                dimissRadialMenu()
             }
         }
+    }
+    
+    @objc static func dimissRadialMenu() {
+        guard CACurrentMediaTime() - radialMenuPressDownTimestamp > 0.035 else {
+            return
+        }
+        radialMenuButtonPressed = false
+        radialMenuDelayTimer?.clean()
+        stickReleasedInRadialMenu = false
+        if radialMenuView == nil, let vc = uiNavigationDelegate as? StreamFrameViewController, vc.hasNoPresentedVC {
+            ControllerSupport.sharedInstance()?.sendNavigationButtonPress()
+            return
+        }
+        radialMenuView?.dismiss()
+        radialMenuView = nil
+        ControllerNavigator.updateUINavigationDelegateState()
     }
     
     private static func listenToNavigationCluster() {
@@ -771,7 +801,14 @@ final class ControllerNavigator: NSObject {
             let verticalNavigationAxis: ControllerElement = ControllerNavigator.radialMenuButtonPosition == .right ? .leftStickY : .rightStickY
             ControllerUtil.listenPrimaryControllerStickAxis(verticalNavigationAxis, threshold: 0.6) {state in
                 GamepadNavigationIllustrationHud.updateActionState(for: verticalNavigationAxis, isInAction: state != .orderedSame)
+                // Invalidate queued repeats even if an overlay now blocks navigation.
+                if state == .orderedSame {
+                    navigationTimer?.clean()
+                    (uiNavigationDelegate as? SettingsViewController)?.swiftUISettingsStore?.cancelPendingHighlightMoves()
+                    return
+                }
                 guard radialMenuView == nil else {return}
+                if ControllerNavigator.shouldBlockAppControllerNavigator {return}
                 switch state {
                 case .orderedAscending:
                     if navigationTimer?.isRunning() != true {
@@ -792,23 +829,20 @@ final class ControllerNavigator: NSObject {
                         }
                     }
                 case .orderedSame:
-                    navigationTimer?.clean()
-                    if let settingsViewController = uiNavigationDelegate as? SettingsViewController,
-                       let store = settingsViewController.swiftUISettingsStore,
-                       store.isActive {
-                        store.cancelPendingHighlightMoves()
-                    }
+                    break // Centering is handled before the overlay/blocking guards.
                 }
             }
             ControllerUtil.listenPrimaryControllerButton(upNavButton) {pressed in 
                 GamepadNavigationIllustrationHud.updateActionState(for: upNavButton, isInAction: pressed)
                 if pressed {
+                    if ControllerNavigator.shouldBlockAppControllerNavigator {return}
                     uiNavigationDelegate.navigateByController(downward: false)
                 }
             }
             ControllerUtil.listenPrimaryControllerButton(downNavButton) {pressed in
                 GamepadNavigationIllustrationHud.updateActionState(for: downNavButton, isInAction: pressed)
                 if pressed {
+                    if ControllerNavigator.shouldBlockAppControllerNavigator {return}
                     uiNavigationDelegate.navigateByController(downward: true)
                 }
             }
@@ -819,6 +853,7 @@ final class ControllerNavigator: NSObject {
             ControllerUtil.listenPrimaryControllerStickAxis(horizontalNavigationAxis, threshold: 0.6) {state in
                 GamepadNavigationIllustrationHud.updateActionState(for: horizontalNavigationAxis, isInAction: state != .orderedSame)
                 guard radialMenuView == nil else {return}
+                if ControllerNavigator.shouldBlockAppControllerNavigator {return}
                 switch state {
                 case .orderedAscending:
                     if navigationTimer?.isRunning() != true {
@@ -839,12 +874,14 @@ final class ControllerNavigator: NSObject {
             ControllerUtil.listenPrimaryControllerButton(leftNavButton) {pressed in
                 GamepadNavigationIllustrationHud.updateActionState(for: leftNavButton, isInAction: pressed)
                 if pressed {
+                    if ControllerNavigator.shouldBlockAppControllerNavigator {return}
                     uiNavigationDelegate.navigateByController(forward: false)
                 }
             }
             ControllerUtil.listenPrimaryControllerButton(rightNavButton) {pressed in
                 GamepadNavigationIllustrationHud.updateActionState(for: rightNavButton, isInAction: pressed)
                 if pressed {
+                    if ControllerNavigator.shouldBlockAppControllerNavigator {return}
                     uiNavigationDelegate.navigateByController(forward: true)
                 }
             }
@@ -855,14 +892,17 @@ final class ControllerNavigator: NSObject {
     @objc static func listenToControllerMouse() {
         guard radialMenuState == .mouseModeEnabled else { return }
         ControllerUtil.listenPrimaryControllerButton(controllerMouseLeftButton){ pressed in
+            if ControllerNavigator.shouldBlockAppControllerNavigator {return}
             GamepadNavigationIllustrationHud.updateActionState(for: controllerMouseLeftButton, isInAction: pressed)
             LiSendMouseButtonEvent(CChar(pressed ? BUTTON_ACTION_PRESS : BUTTON_ACTION_RELEASE), BUTTON_LEFT)
         }
         ControllerUtil.listenPrimaryControllerButton(controllerMouseRightButton){ pressed in
+            if ControllerNavigator.shouldBlockAppControllerNavigator {return}
             GamepadNavigationIllustrationHud.updateActionState(for: controllerMouseRightButton, isInAction: pressed)
             LiSendMouseButtonEvent(CChar(pressed ? BUTTON_ACTION_PRESS : BUTTON_ACTION_RELEASE), BUTTON_RIGHT)
         }
         ControllerUtil.listenPrimaryControllerStick(controllerMouseStick){ offsetVector in
+            if ControllerNavigator.shouldBlockAppControllerNavigator {return}
             GamepadNavigationIllustrationHud.updateActionState(for: controllerMouseStick, isInAction: hypot(offsetVector.dx, offsetVector.dy) >= 0.1)
             // print("performRadialMenuAction mouse \(offsetVector) \(CACurrentMediaTime())")
             controllerMouseInputX = offsetVector.dx
@@ -870,6 +910,7 @@ final class ControllerNavigator: NSObject {
         }
         let wheelStick: ControllerElement = controllerMouseStick == .rightStick ? .leftStick : .rightStick
         ControllerUtil.listenPrimaryControllerStick(wheelStick) { offsetVector in
+            if ControllerNavigator.shouldBlockAppControllerNavigator {return}
             GamepadNavigationIllustrationHud.updateActionState(for: wheelStick, isInAction: hypot(offsetVector.dx, offsetVector.dy) >= 0.1)
             controllerMouseWheelInputX = offsetVector.dx
             controllerMouseWheelInputY = offsetVector.dy
@@ -958,6 +999,7 @@ final class ControllerNavigator: NSObject {
                 if buttonNavigation.control == radialMenuButton {continue}
                 if listenedControls.contains(buttonNavigation.control) {continue}
                 ControllerUtil.listenPrimaryControllerButton(buttonNavigation.control) {pressed in
+                    if ControllerNavigator.shouldBlockAppControllerNavigator {return}
                     buttonNavigation.isInAction = pressed
                     GamepadNavigationIllustrationHud.updateActionState(for: buttonNavigation.control, isInAction: pressed)
                     uiNavigationDelegate.uiButtonActionForControllerNavigator(pressed: pressed, from: buttonNavigation)
@@ -1166,7 +1208,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
         }
 
         if navigation.action == "holdToNavSection" {
-            ControllerNavigator.settingsSectionNavigationHoldActive = pressed && currentSettingsMenuMode == .AllSettings
+            ControllerNavigator.settingsSectionNavigationHoldActive = pressed && currentSettingsMenuMode == .all
             return
         }
         let isHighlightingUIStack = ControllerNavigator.controllerNavigationHighlightedView is UIStackView
@@ -1228,10 +1270,10 @@ extension SettingsViewController: ControllerUINavigationDelegate {
         }
         var elements: [ControllerNavigationElement] = []
         elements.append(ControllerNavigationElement(control:ControllerNavigator.radialMenuButtonPosition == .left ? .dpadDown : .y, action: "readTip"))
-        if self.currentSettingsMenuMode == .AllSettings {
+        if self.currentSettingsMenuMode == .all {
             elements.append(ControllerNavigationElement(control:ControllerNavigator.radialMenuButtonPosition == .left ? .dpadDown : .y, action: "doublePressToAddFavorite"))
         }
-        if self.currentSettingsMenuMode == .FavoriteSettings {
+        if self.currentSettingsMenuMode == .favorite {
             elements.append(ControllerNavigationElement(control: ControllerNavigator.radialMenuButtonPosition == .left ? .dpadDown : .y, action: "doublePressToDelete"))
             elements.append(ControllerNavigationElement(control: ControllerNavigator.radialMenuButtonPosition == .left ? .dpadUp : .a, action: "holdToReorder"))
         }
@@ -1240,7 +1282,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
         elements.append(ControllerNavigationElement(control:ControllerNavigator.radialMenuButtonPosition == .left ? .rightStickY : .leftStickY, action: "menuNavigation"))
         elements.append(ControllerNavigationElement(control:ControllerNavigator.radialMenuButtonPosition == .left ? .abxy : .dpad, action: "menuNavigation"))
         
-        if self.currentSettingsMenuMode == .AllSettings {
+        if self.currentSettingsMenuMode == .all {
             elements.append(ControllerNavigationElement(control:ControllerNavigator.radialMenuButtonPosition == .left ? .dpadUp : .a, action: "holdToNavSection"))
         }
 
@@ -1252,7 +1294,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
     func navigateByController(downward:Bool) {
         guard self.hasNoPresentedVC else {return}
         if let store = swiftUISettingsStore, store.isActive {
-            if store.menuMode == .FavoriteSettings,
+            if store.menuMode == .favorite,
                ControllerNavigator.settingsFavoriteReorderActive {
                 store.moveHighlightedFavorite(by: downward ? 1 : -1)
                 return
@@ -1260,7 +1302,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
             store.moveHighlight(by: downward ? 1 : -1)
             return
         }
-        if currentSettingsMenuMode == .FavoriteSettings,
+        if currentSettingsMenuMode == .favorite,
            ControllerNavigator.settingsFavoriteReorderActive {
             moveHighlightedFavoriteSettingStack(by: downward ? 1 : -1)
             return
@@ -1401,7 +1443,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
 
     private func controllerNavigationRestorableTargets() -> [UIView] {
         var targets: [UIView] = []
-        if currentSettingsMenuMode == .FavoriteSettings || currentSettingsMenuMode == .RemoveSettingItem,
+        if currentSettingsMenuMode == .favorite || currentSettingsMenuMode == .removeSettingItem,
            let parentStack = parentStack {
             targets.append(contentsOf: visibleFavoriteSettingStacks(in: parentStack))
         }
@@ -1442,7 +1484,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
     }
 
     func controllerNavigationPersistenceIdentifier(for view: UIView) -> String? {
-        if currentSettingsMenuMode == .FavoriteSettings || currentSettingsMenuMode == .RemoveSettingItem,
+        if currentSettingsMenuMode == .favorite || currentSettingsMenuMode == .removeSettingItem,
            let topLevelStack = topLevelFavoriteSettingStack(containing: view),
            let identifier = topLevelStack.accessibilityIdentifier,
            !identifier.isEmpty {
@@ -1472,7 +1514,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
 
     private func handleControllerNavigationReorderHold(pressed: Bool) {
         if let store = swiftUISettingsStore, store.isActive {
-            guard store.menuMode == .FavoriteSettings else {
+            guard store.menuMode == .favorite else {
                 ControllerNavigator.settingsFavoriteReorderActive = false
                 return
             }
@@ -1481,7 +1523,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
         }
         
 #if !os(tvOS)
-        guard currentSettingsMenuMode == .FavoriteSettings else {
+        guard currentSettingsMenuMode == .favorite else {
             ControllerNavigator.settingsFavoriteReorderActive = false
             return
         }
@@ -1493,7 +1535,6 @@ extension SettingsViewController: ControllerUINavigationDelegate {
 
         guard ControllerNavigator.settingsFavoriteReorderActive else { return }
         ControllerNavigator.settingsFavoriteReorderActive = false
-        saveFavoriteSettingStackIdentifiers()
 #endif
     }
 
@@ -1532,25 +1573,8 @@ extension SettingsViewController: ControllerUINavigationDelegate {
                 else {
 #if !os(tvOS)
                     switch self?.currentSettingsMenuMode {
-                    case .FavoriteSettings:
+                    case .favorite:
                         self?.removeHighlightedFavoriteSettingStack()
-                    case .AllSettings:
-                        if let highlitedStack = ControllerNavigator.controllerNavigationHighlightedView as? UIStackView {
-                            self?.addSetting(toFavorite: highlitedStack)
-                            DispatchQueue.main.async {
-                                if AlertControllerUtil.autoCompletion {return}
-                                AlertControllerUtil.autoCompletion = true
-                                AlertControllerUtil.showAlert(
-                                    in: self,
-                                    title: LocalizationHelper.localizedString(forKey: ""),
-                                    message: "Setting added to favorite".localized,
-                                    withCancel: false,
-                                    buttonTitle: "",
-                                    countdown: 1,
-                                    completion: {
-                                })
-                            }
-                        }
                     default:
                         break
                     }
@@ -1596,7 +1620,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
 
 #if !os(tvOS)
     private func removeHighlightedFavoriteSettingStack() {
-        guard currentSettingsMenuMode == .FavoriteSettings,
+        guard currentSettingsMenuMode == .favorite,
               let parentStack = parentStack,
               let highlightedView = ControllerNavigator.controllerNavigationHighlightedView,
               let stack = topLevelFavoriteSettingStack(containing: highlightedView) else {
@@ -1609,7 +1633,6 @@ extension SettingsViewController: ControllerUINavigationDelegate {
 
         parentStack.removeArrangedSubview(stack)
         stack.removeFromSuperview()
-        saveFavoriteSettingStackIdentifiers()
         parentStack.setNeedsLayout()
 
         UIView.animate(withDuration: 0.12) {
@@ -1640,7 +1663,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
     }
 
     private func moveHighlightedFavoriteSettingStackOnMain(by offset: Int) {
-        guard currentSettingsMenuMode == .FavoriteSettings,
+        guard currentSettingsMenuMode == .favorite,
               let parentStack = parentStack,
               let highlightedView = ControllerNavigator.controllerNavigationHighlightedView,
               let stack = topLevelFavoriteSettingStack(containing: highlightedView),
@@ -1691,7 +1714,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
     private func moveControllerNavigationSelection(by offset: Int) {
         let allTargets = controllerNavigationTargets(skippingDisabledStacks: false)
         if ControllerNavigator.settingsSectionNavigationHoldActive,
-           currentSettingsMenuMode == .AllSettings {
+           currentSettingsMenuMode == .all {
             let sectionHeaders = allTargets.filter(isControllerNavigationSectionHeader)
             guard !sectionHeaders.isEmpty else {
                 clearControllerNavigationHighlight()
@@ -1757,12 +1780,12 @@ extension SettingsViewController: ControllerUINavigationDelegate {
         guard let parentStack = parentStack else { return [] }
 
         switch currentSettingsMenuMode {
-        case .FavoriteSettings, .RemoveSettingItem:
+        case .favorite, .removeSettingItem:
             return favoriteSettingsControllerNavigationTargets(
                 in: parentStack,
                 skippingDisabledStacks: skippingDisabledStacks
             )
-        case .AllSettings:
+        case .all:
             break
         @unknown default:
             break
@@ -1794,7 +1817,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
     private func controllerNavigationTargetsIncludingUnavailable() -> [UIView] {
         guard let parentStack = parentStack else { return [] }
         
-        if currentSettingsMenuMode == .FavoriteSettings || currentSettingsMenuMode == .RemoveSettingItem {
+        if currentSettingsMenuMode == .favorite || currentSettingsMenuMode == .removeSettingItem {
             return parentStack.arrangedSubviews.compactMap { $0 as? UIStackView }
         }
         
@@ -1872,7 +1895,7 @@ extension SettingsViewController: ControllerUINavigationDelegate {
     }
 
     private func isControllerNavigationSelectableTarget(_ view: UIView) -> Bool {
-        if currentSettingsMenuMode == .FavoriteSettings || currentSettingsMenuMode == .RemoveSettingItem {
+        if currentSettingsMenuMode == .favorite || currentSettingsMenuMode == .removeSettingItem {
             return true
         }
 

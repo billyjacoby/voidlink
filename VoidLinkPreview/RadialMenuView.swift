@@ -26,6 +26,7 @@ import UIKit
     case navigationSettings
     case exit
     case toolbox
+    case textInput
 }
 
 @objc public enum RadialMenuState:Int {
@@ -448,7 +449,7 @@ private enum RadialMenuIconImageRenderer {
     private static let assetVisualScale: CGFloat = 1
 
     static func templateImage(named name: String, pointSize: CGFloat) -> UIImage? {
-        let scale = UIScreen.main.scale
+        let scale = PublicUtils.currentScreen.scale
         let normalizedPointSize = max(ceil(pointSize * 2) / 2, 1)
         let cacheKey = "\(name)-\(normalizedPointSize)-\(scale)-\(assetCanvasScale)-\(assetVisualScale)" as NSString
 

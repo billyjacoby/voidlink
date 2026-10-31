@@ -35,12 +35,17 @@ import UIKit
         return .landscape
 #else
         let window = controller.viewIfLoaded?.window ?? controller.presentingViewController?.viewIfLoaded?.window
-        if let root = window?.rootViewController as? SWRevealViewController {
+        func revealController(in root: UIViewController?) -> SWRevealViewController? {
+            guard let root else { return nil }
+            if let reveal = root as? SWRevealViewController { return reveal }
+            return root.children.lazy.compactMap { revealController(in: $0) }.first
+        }
+        if let root = revealController(in: window?.rootViewController) {
             return root.supportedInterfaceOrientations
         }
         // The widget picker can use a temporary overlay window in the same scene.
         if #available(iOS 13.0, *), let scene = window?.windowScene,
-           let root = scene.windows.compactMap({ $0.rootViewController as? SWRevealViewController }).first {
+           let root = scene.windows.compactMap({ revealController(in: $0.rootViewController) }).first {
             return root.supportedInterfaceOrientations
         }
         return UIDevice.current.userInterfaceIdiom == .phone ? .allButUpsideDown : .all

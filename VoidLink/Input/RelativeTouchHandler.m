@@ -7,7 +7,9 @@
 //
 
 #import "RelativeTouchHandler.h"
-#import "DataManager.h"
+#import "AppDelegate.h"
+#import "TemporaryHost.h"
+#import "TemporaryApp.h"
 #import "VoidLink-Swift.h"
 
 #include <Limelight.h>
@@ -38,6 +40,10 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
     NSUInteger rightClickGeneration;
     NSTimeInterval inputResetTimestamp;
     
+    TrackpadTouchHandler* trackpadTouchHandler;
+    RelativeTouchGestureHandler* gestureHandler;
+    CursorInertia* cursorInertia; // nil when Cursor Inertia is disabled
+
 #if TARGET_OS_TV
     UIGestureRecognizer* remotePressRecognizer;
     UIGestureRecognizer* remoteLongPressRecognizer;
@@ -50,6 +56,9 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
     self = [self init];
     self->streamView = view;
     self->currentSettings = settings;
+    if (settings.trackpadGestureMode.intValue == TrackpadGestureModeNativeTrackpad) {
+        trackpadTouchHandler = [[TrackpadTouchHandler alloc] initWithView:view settings:settings];
+    }
     // replace righclick recoginizing with my CustomTapGestureRecognizer for better experience, higher recoginizing rate.
     _mouseRightClickTapRecognizer = [[CustomTapGestureRecognizer alloc] initWithTarget:self action:@selector(mouseRightClick)];
     _mouseRightClickTapRecognizer.numberOfTouchesRequired = 2;
@@ -58,6 +67,8 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
     _mouseRightClickTapRecognizer.delaysTouchesEnded = NO;
     [self->streamView.streamFrameTopLayerView addGestureRecognizer:_mouseRightClickTapRecognizer]; // add all additional gestures to the streamFrameTopLayerView instead of the streamview.
     _mouseRightClickTapRecognizer.touchCapturingView = streamView;
+    // Native multi-touch taps are interpreted by the host.
+    _mouseRightClickTapRecognizer.enabled = trackpadTouchHandler == nil;
     
     firstTouchMoved = false;
     mousePointerMoved = false;
@@ -67,6 +78,14 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
     _edgeTolerance = settings.edgeSlidingSensitivity.floatValue;
     self->touchPointSpawnedAtUpperScreenEdge = false;
     
+    gestureHandler = [[RelativeTouchGestureHandler alloc] initWithStreamView:view touchMode:TouchModeRelative settings:settings];
+    if(settings.cursorInertia){
+        __weak RelativeTouchGestureHandler* weakGestureHandler = gestureHandler;
+        cursorInertia = [[CursorInertia alloc] initWithDeceleration:settings.cursorInertiaDeceleration.floatValue handler:^(CGVector delta) {
+            [weakGestureHandler moveCursorBy:delta];
+        }];
+    }
+
 #if TARGET_OS_TV
     remotePressRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(remoteButtonPressed:)];
     remotePressRecognizer.allowedPressTypes = @[@(UIPressTypeSelect)];
@@ -79,6 +98,12 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
 #endif
     
     return self;
+}
+
+// External input uses the rotated trackpad overlay. Otherwise use the unzoomed
+// top layer so zooming or panning the video does not change input coordinates.
+- (CGPoint)locationOfTouch:(UITouch*)touch {
+    return [touch locationInView:[self coordinateView]];
 }
 
 - (bool)isOnScreenControllerBeingPressed:(NSSet* )touches{
@@ -103,7 +128,7 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
 }
 
 - (UIView*)coordinateView {
-    return streamView.relativeTouchCoordinateView ?: streamView;
+    return streamView.relativeTouchCoordinateView ?: streamView.streamFrameTopLayerView ?: streamView;
 }
 
 - (void)releaseLeftButton {
@@ -124,7 +149,9 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
         LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
         rightButtonDown = NO;
     }
-    [TouchPadGestureHandler resetGesture];
+    [trackpadTouchHandler reset];
+    [cursorInertia stop];
+    [gestureHandler reset];
     touchLockedForMouseMove = nil;
     initialMousePointerLocation = latestMousePointerLocation = CGPointZero;
     mousePointerTimestamp = 0;
@@ -153,6 +180,17 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
     return isAdjacent;
 }
 
+- (void)reset {
+    [self resetInput];
+}
+
+- (void)dealloc {
+    [trackpadTouchHandler reset];
+    [cursorInertia stop];
+    [gestureHandler reset];
+    [streamView.streamFrameTopLayerView removeGestureRecognizer:_mouseRightClickTapRecognizer];
+}
+
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
     NSSet* currentTouches = [UITouchUtil touchesIn:streamView from:event];
     if (suppressUntilFreshTouch) {
@@ -162,8 +200,9 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
         }
         suppressUntilFreshTouch = NO;
     }
-    if (currentTouches.count == touches.count) [TouchPadGestureHandler resetGesture];
+    if (currentTouches.count == touches.count) [gestureHandler reset];
     firstTouchMoved = false;
+    [cursorInertia stop]; // touching the screen stops a coasting cursor
     UIView* coordinateView = [self coordinateView];
     CGRect bounds = coordinateView.bounds;
     
@@ -177,14 +216,25 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
     
     touchPointSpawnedAtUpperScreenEdge = false; // reset this flag immediately if we get a touch event passing the check above, this fixes irresponsive touch after closing the command tool menu.
      
-    if(currentTouches.count>=2){
+    if(currentTouches.count >= 2 || (trackpadTouchHandler && multiTouchesDetected)){
+        ++leftClickGeneration;
+        [self releaseLeftButton];
+        if (trackpadTouchHandler) {
+            if (!multiTouchesDetected) {
+                quickTapDetected = false;
+                touchLockedForMouseMove = nil;
+                mousePointerTimestamp = 0;
+                // Include the first finger when switching from mouse to native gestures.
+                [trackpadTouchHandler touchesBegan:currentTouches withEvent:event];
+            } else {
+                [trackpadTouchHandler touchesBegan:touches withEvent:event];
+            }
+        }
         multiTouchesDetected = true;
         touchLockedForMouseMove = nil;
         quickTapDetected = NO;
         mousePointerMoved = NO;
         mousePointerTimestamp = 0;
-        ++leftClickGeneration;
-        [self releaseLeftButton];
         return;
     }
     
@@ -201,7 +251,7 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
 
     // quick double tap detection for dragging. simulates a real notebook computer touchpad
     if (candidateTouch == nil) return;
-    CGPoint currentTouchLocation = [candidateTouch locationInView:coordinateView];
+    CGPoint currentTouchLocation = [self locationOfTouch:candidateTouch];
     
     if(currentTouches.count == 1){
         NSTimeInterval tapInterval = CACurrentMediaTime() - mousePointerTimestamp;
@@ -217,28 +267,29 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
         touchLockedForMouseMove = candidateTouch;
         // NSLog(@"Candidate touch for mouse movement locked");
         mousePointerTimestamp = CACurrentMediaTime();
-        initialMousePointerLocation = latestMousePointerLocation = [touchLockedForMouseMove locationInView:coordinateView];
+        initialMousePointerLocation = latestMousePointerLocation = [self locationOfTouch:touchLockedForMouseMove];
     }
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
     if (suppressUntilFreshTouch) return;
         
-    NSSet* currentTouches = [UITouchUtil touchesIn:streamView from:event];
-        
-    if(![self isOnScreenControllerBeingPressed:currentTouches]) {
-        [TouchPadGestureHandler handleGestureIn:streamView coordinateView:[self coordinateView] with:event];
+    if (trackpadTouchHandler && multiTouchesDetected) {
+        [trackpadTouchHandler touchesMoved:touches withEvent:event];
+        return;
     }
+    NSSet* currentTouches = [UITouchUtil touchesIn:streamView from:event];
+    if(!trackpadTouchHandler && ![self isOnScreenControllerBeingPressed:currentTouches]) [gestureHandler handleGestureWith:event];
          
     if(multiTouchesDetected) return;
     
     if([touches containsObject:touchLockedForMouseMove]){
-        CGPoint currentLocation = [touchLockedForMouseMove locationInView:[self coordinateView]];
+        CGPoint currentLocation = [self locationOfTouch:touchLockedForMouseMove];
         bool isAdjacentPoints = [self isAdjacentPoints:initialMousePointerLocation from:currentLocation tolerance:currentSettings.singleTapSensitivity.doubleValue];
         if(!mousePointerMoved && !isAdjacentPoints){
             mousePointerMoved = true;
         }
-        [self sendMouseMoveEvent:currentLocation];
+        [self sendMouseMoveEvent:currentLocation timestamp:touchLockedForMouseMove.timestamp];
     }
 }
 
@@ -249,20 +300,24 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
         }
         return;
     }
-    
-    [TouchPadGestureHandler releasePinchModifier];
-    
-    [TouchPadGestureHandler startInertialScroll];
+    [gestureHandler endGestureWithStartInertialScroll:trackpadTouchHandler == nil];
     
     if(multiTouchesDetected){
+        [trackpadTouchHandler touchesEnded:touches withEvent:event];
         if([UITouchUtil touchesIn:streamView from:event].count == touches.count){
-            multiTouchesDetected = false;
+            if (trackpadTouchHandler) [self reset];
+            else multiTouchesDetected = false;
         }
         return;
     }
     if([UITouchUtil touchesIn:streamView from:event].count == touches.count) multiTouchesDetected = false;
 
     if([touches containsObject:touchLockedForMouseMove]){
+        // let the cursor coast after a flick, but not after a tap or a double-tap drag
+        if(mousePointerMoved && firstTouchMoved && !self->quickTapDetected && !touchPointSpawnedAtUpperScreenEdge){
+            [cursorInertia liftOffAt:touchLockedForMouseMove.timestamp];
+        }
+
         // dealing with a single first tap, whether the button will be released, is going to be decided in sendLongMouseLeftButtonClickEvent
         if(!mousePointerMoved && !self->quickTapDetected) [self sendLongMouseLeftButtonClickEvent];
         
@@ -290,22 +345,33 @@ static const float QUICK_TAP_TIME_INTERVAL = 0.2;
     touchPointSpawnedAtUpperScreenEdge = false;
 }
 
-- (void)sendMouseMoveEvent:(CGPoint)currentLocation{
-    // UIKit and gesture state stay on the main thread. LiSendMouseMoveEvent
-    // already queues input deltas on moonlight-common's input queue. Avoid
-    // an additional dispatch hop that can mix old locations with a reset or
-    // reorder a drag's last movement after its button release.
+// Runs on the main thread: RelativeTouchGestureHandler may pan the zoomed stream view.
+// It converts the delta into relative mouse movement, or absolute cursor positions while zoomed.
+- (void)sendMouseMoveEvent:(CGPoint)currentLocation timestamp:(NSTimeInterval)timestamp{
     bool isAdjacentPoints = [self isAdjacentPoints:initialMousePointerLocation from:currentLocation tolerance:currentSettings.relativeTouchSlideThreshold.floatValue];
+
     if (!firstTouchMoved && !isAdjacentPoints) {
         latestMousePointerLocation = currentLocation;
         firstTouchMoved = true;
     }
-    int deltaX = (currentLocation.x - latestMousePointerLocation.x) * 1.35 * currentSettings.mousePointerVelocityFactor.floatValue;
-    int deltaY = (currentLocation.y - latestMousePointerLocation.y) * 1.35 * currentSettings.mousePointerVelocityFactor.floatValue;
-    if (deltaX == 0 && deltaY == 0) return;
+    BOOL zoomViewport = streamView.relativeTouchCoordinateView == nil &&
+        currentSettings.trackpadGestureMode.intValue == TrackpadGestureModeZoomViewport;
+    CGFloat velocityFactor;
+    if (zoomViewport) {
+        velocityFactor = currentSettings.zoomViewportPointerVelocityFactor.floatValue * (PublicUtils.isIPhone ? 3.880 : 4.875 * 0.875);
+    } else {
+        velocityFactor = currentSettings.mousePointerVelocityFactor.floatValue * (PublicUtils.isIPhone ? 4.3605 : 2.6325 * 1.2);
+    }
+
+    CGVector delta = CGVectorMake((currentLocation.x - latestMousePointerLocation.x) * velocityFactor,
+                                  (currentLocation.y - latestMousePointerLocation.y) * velocityFactor);
     latestMousePointerLocation = currentLocation;
-    if (touchPointSpawnedAtUpperScreenEdge || !firstTouchMoved) return;
-    LiSendMouseMoveEvent(deltaX, deltaY);
+
+    if(touchPointSpawnedAtUpperScreenEdge) return; // we're done here. this touch event will not be sent to the remote PC.
+    if(!firstTouchMoved || (delta.dx == 0 && delta.dy == 0)) return;
+
+    [gestureHandler moveCursorBy:delta];
+    [cursorInertia recordMove:delta timestamp:timestamp];
 }
 
 // this will turn into a dragging anytime...

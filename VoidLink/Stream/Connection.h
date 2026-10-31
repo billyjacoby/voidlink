@@ -34,6 +34,10 @@
 + (void)setAudioBufferLimitMs:(int)milliseconds;
 + (void)resetSysAudioPlayback;
 + (void)resetSysAudioPlaybackCooldown;
++ (void)logSysAudioPlaybackLatency;
+#if TARGET_OS_TV
++ (BOOL)resumeSysAudioPlaybackBeforeMicWithError:(NSError **)error;
+#endif
 
 + (bool)useDualSenseAuthoredPCM;
 + (void)setuseDualSenseAuthoredPCM:(bool)use;
