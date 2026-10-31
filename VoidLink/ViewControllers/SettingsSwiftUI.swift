@@ -4191,6 +4191,7 @@ final class SettingsSession: NSObject, ObservableObject {
     }
 
     private func orientedNativeStreamSize(_ size: CGSize) -> CGSize {
+        let size = NativeStreamResolution.alignedSize(size)
         let external = itemRegistry.externalDisplayMode.value == ExternalDisplayMode.extended.rawValue
             && externalDisplayScreen != nil
         guard !external, itemRegistry.unlockDisplayOrientation.value == 0 else { return size }
@@ -4735,8 +4736,11 @@ final class SettingsSession: NSObject, ObservableObject {
             ? PublicUtils.externalScreen : nil
         let screen = externalScreen ?? window.screen
         let bounds = externalScreen?.bounds ?? window.bounds
-        let width = (bounds.width * screen.nativeScale).rounded()
-        let height = (bounds.height * screen.nativeScale).rounded()
+        let nativeSize = NativeStreamResolution.alignedSize(CGSize(
+            width: bounds.width * screen.nativeScale,
+            height: bounds.height * screen.nativeScale))
+        let width = nativeSize.width
+        let height = nativeSize.height
         guard width > 0, height > 0,
               width <= Double(Int32.max), height <= Double(Int32.max) else { return false }
         let landscape = externalScreen == nil && !settings.unlockDisplayOrientation
