@@ -7,6 +7,7 @@
 # 代码 Coding
 - 代码提交在`Integration`分支。
 - For latest coding commits, go to branch `Integration`.
+- See [upstream synchronization](docs/UPSTREAM_SYNC.md) for the integration workflow and verification gates.
 
 ### Local iOS development
 
