@@ -25,6 +25,7 @@ private extension View {
 @available(iOS 13.0, *)
 final class WidgetPickerPresentationState: ObservableObject {
     @Published var hasHostAppeared = false
+    @Published var isVerticalBarLeading = false
 }
 
 @available(iOS 13.0, *)
@@ -396,6 +397,7 @@ private struct WidgetPickerMetrics {
     let tabFontSize: CGFloat
     let tabHorizontalPadding: CGFloat
     let tabHeight: CGFloat
+    let closeButtonTrailingInset: CGFloat
     let pickerInsetKeyboard: CGFloat
     let pickerInsetGamepadHorizontal: CGFloat
     let pickerInsetGamepadVertical: CGFloat
@@ -411,7 +413,7 @@ private struct WidgetPickerMetrics {
     let rightPanelMinWidth: CGFloat
     let leftWidthRatio: CGFloat
 
-    static func make(for isPhone: Bool) -> WidgetPickerMetrics {
+    @MainActor static func make(for isPhone: Bool, isVerticalBarLeading: Bool = false) -> WidgetPickerMetrics {
         WidgetPickerMetrics(
             isPhone: isPhone,
             outerPadding: isPhone ? 4 : 24,
@@ -433,9 +435,11 @@ private struct WidgetPickerMetrics {
             tabFontSize: isPhone ? 7.2 : 13,
             tabHorizontalPadding: isPhone ? 5 : 16,
             tabHeight: isPhone ? 16 : 38,
+            closeButtonTrailingInset: isPhone && PublicUtils.isFoldableIPhone
+                && PublicUtils.hingeStatus == .closed && isVerticalBarLeading ? 30 : 0,
             pickerInsetKeyboard: isPhone ? 1 : 16,
             pickerInsetGamepadHorizontal: isPhone ? 10 : 24,
-            pickerInsetGamepadVertical: isPhone ? 10 : 24,
+            pickerInsetGamepadVertical: isPhone ? (PublicUtils.isFoldableIPhone ? 52 : 10) : 24,
             pickerInsetFunctional: isPhone ? 2 : 24,
             pickerSurfaceCornerRadius: isPhone ? 14 : 28,
             tipHeight: isPhone ? 36 : 68,
@@ -482,6 +486,7 @@ struct WidgetPickerView: View {
     var onCloseRequested: (() -> Void)? = nil
 
     @SwiftUI.State private var selectedTab: WidgetPickerTab
+    @SwiftUI.State private var currentHingeStatus = PublicUtils.hingeStatus
     @SwiftUI.State private var selectedGamepadType: GamepadType = .xbox
     @SwiftUI.State private var selectedCmds: [String] = []
     @SwiftUI.State private var poolItems: [WidgetPoolItem] = []
@@ -942,7 +947,10 @@ struct WidgetPickerView: View {
     }
 
     private var pickerMetrics: WidgetPickerMetrics {
-        WidgetPickerMetrics.make(for: UIDevice.current.userInterfaceIdiom == .phone)
+        let unfoldedLandscapeDuo = PublicUtils.isFoldableIPhone
+            && currentHingeStatus != .closed && PublicUtils.isLandscape()
+        return WidgetPickerMetrics.make(for: PublicUtils.isIPhone && !unfoldedLandscapeDuo,
+                                        isVerticalBarLeading: presentationState.isVerticalBarLeading)
     }
 
     var body: some View {
@@ -992,6 +1000,9 @@ struct WidgetPickerView: View {
             suppressKeyboardDrivenLayoutAnimation = true
             resetKeyboardAnimationSuppression(using: notification)
         }
+        .onReceive(NotificationCenter.default.publisher(for: PublicUtils.hingeStatusDidChangeNotification)) { _ in
+            currentHingeStatus = PublicUtils.hingeStatus
+        }
         .onAppear {
             UISegmentedControl.appearance().apportionsSegmentWidthsByContent = true
             applyInitialConfigurationIfNeeded()
@@ -1025,7 +1036,7 @@ struct WidgetPickerView: View {
                 let verticalOuterPadding = isPhonePortrait ? pickerMetrics.outerPadding * 0.5 : pickerMetrics.outerPadding
                 let reclaimedBottomSafeArea = isPhonePortrait ? contentProxy.safeAreaInsets.bottom : 0
                 let centeredContentTopInset = pickerMetrics.isPhone ? 0 : contentProxy.safeAreaInsets.top
-                let centeredContentBottomInset = pickerMetrics.isPhone ? 0 : contentProxy.safeAreaInsets.bottom
+                let centeredContentBottomInset = pickerMetrics.isPhone ? 0 : (PublicUtils.isFoldableIPhone ? 0 : contentProxy.safeAreaInsets.bottom)
                 let leftWidth = max(pickerMetrics.isPhone ? 0 : 420, contentProxy.size.width * pickerMetrics.leftWidthRatio)
                 let rightWidth = max(
                     pickerMetrics.rightPanelMinWidth,
@@ -1040,7 +1051,8 @@ struct WidgetPickerView: View {
                 let sharedVerticalHeight = max(220, sharedVerticalAvailableHeight * 0.5)
                 let verticalPoolHeight = max(220, sharedVerticalHeight + poolVerticalBonusHeight)
                 let verticalPickerHeight = max(220, sharedVerticalAvailableHeight - verticalPoolHeight)
-                let bottomStackPadding = isPhonePortrait ? (verticalOuterPadding - reclaimedBottomSafeArea) : verticalOuterPadding
+                let bottomStackPadding = isPhonePortrait ? (verticalOuterPadding - reclaimedBottomSafeArea)
+                    : (PublicUtils.isFoldableIPhone && currentHingeStatus != .closed ? -6 : verticalOuterPadding)
 
                 VStack {
                     Group {
@@ -1232,6 +1244,7 @@ struct WidgetPickerView: View {
                         .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .padding(.trailing, metrics.closeButtonTrailingInset)
             }
         }
         .padding(pickerPanelPadding)

@@ -16,12 +16,30 @@ class ThemeManager: NSObject {
     
     private static var _privateUserInterfaceStyle: UIUserInterfaceStyle = .unspecified
     private static var _userInterfaceStyle: UIUserInterfaceStyle = .unspecified
+
+    @objc class func pinsSystemStyleForFoldable() -> Bool {
+        #if os(iOS) && compiler(>=6.4)
+        if #available(iOS 27.1, *) { return PublicUtils.isFoldableRAMCached }
+        #endif
+        return false
+    }
+
+    @available(iOS 13.0, tvOS 13.0, *)
+    private class func currentSystemStyle() -> UIUserInterfaceStyle {
+        if pinsSystemStyleForFoldable() {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .filter { $0.session.role == .windowApplication }
+            let scene = scenes.first { $0.windows.contains { $0.isKeyWindow } }
+                ?? scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+            if let scene { return scene.traitCollection.userInterfaceStyle }
+        }
+        return PublicUtils.currentScreen.traitCollection.userInterfaceStyle
+    }
     
     @objc class func setPublicUIStyle() -> UIColor {
         if #available(iOS 13.0, *) {
-            let traitCollection = UIScreen.main.traitCollection
             if _privateUserInterfaceStyle == .unspecified {
-                _userInterfaceStyle = traitCollection.userInterfaceStyle
+                _userInterfaceStyle = currentSystemStyle()
             } else {
                 _userInterfaceStyle = _privateUserInterfaceStyle
             }
@@ -35,13 +53,16 @@ class ThemeManager: NSObject {
     }
 
     @objc class func overrideUserInterfaceStyle() -> UIUserInterfaceStyle {
+        if pinsSystemStyleForFoldable(), _privateUserInterfaceStyle == .unspecified {
+            return userInterfaceStyle()
+        }
         return _privateUserInterfaceStyle
     }
     
     @objc class func setUserInterfaceStyle(_ style: UIUserInterfaceStyle) {
         let oldUserInterfaceStyle = _userInterfaceStyle
         _privateUserInterfaceStyle = style
-        applyUserInterfaceStyleOverride(style)
+        applyUserInterfaceStyleOverride(overrideUserInterfaceStyle())
         
         _ = setPublicUIStyle()
 
@@ -64,8 +85,8 @@ class ThemeManager: NSObject {
         }
 
         let oldUserInterfaceStyle = _userInterfaceStyle
-        _userInterfaceStyle = style
-        applyUserInterfaceStyleOverride(.unspecified)
+        _userInterfaceStyle = pinsSystemStyleForFoldable() ? currentSystemStyle() : style
+        applyUserInterfaceStyleOverride(pinsSystemStyleForFoldable() ? _userInterfaceStyle : .unspecified)
 
         if oldUserInterfaceStyle == _userInterfaceStyle {
             return

@@ -187,6 +187,26 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     }
 }
 
+// A fold or external-display transfer changes the render view's bounds, not
+// the encoded stream. Keep the decoder and its format descriptions alive.
+- (void)layoutDisplayLayerForScreenChange
+{
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self layoutDisplayLayerForScreenChange]; });
+        return;
+    }
+    if (_displayLayer == nil || _streamAspectRatio <= 0) return;
+    CGSize bounds = _view.bounds.size;
+    CGSize videoSize = bounds.width > bounds.height * _streamAspectRatio
+        ? CGSizeMake(bounds.height * _streamAspectRatio, bounds.height)
+        : CGSizeMake(bounds.width, bounds.width / _streamAspectRatio);
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _displayLayer.position = CGPointMake(CGRectGetMidX(_view.bounds), CGRectGetMidY(_view.bounds));
+    _displayLayer.bounds = CGRectMake(0, 0, videoSize.width, videoSize.height);
+    [CATransaction commit];
+}
+
 - (id)initWithView:(UIView* )view callbacks:(id<ConnectionCallbacks>)callbacks streamAspectRatio:(float)aspectRatio
 {
     NSLog(@"initializing video decoder %f", CACurrentMediaTime());
@@ -204,7 +224,7 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     _view = (StreamView*) view;
     _callbacks = callbacks;
     _streamAspectRatio = aspectRatio;
-    _maxRefreshRate = [[UIScreen mainScreen] maximumFramesPerSecond];
+    _maxRefreshRate = [PublicUtils screenForView:view].maximumFramesPerSecond;
     _parameterSetBuffers = [[NSMutableArray alloc] init];
     atomic_init(&_renderedInterpolatedFrameCount, 0);
 
@@ -226,7 +246,7 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     // NSTimeInterval interval = 1.0/tempSettings.framerate.intValue;
 
     [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(reinitializeDisplayLayer)
+                                             selector:@selector(layoutDisplayLayerForScreenChange)
                                                  name:@"ScreenChanged"
                                                object:nil];
 

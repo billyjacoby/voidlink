@@ -1553,7 +1553,7 @@ static __weak StreamFrameViewController *VLSharedStreamFrameViewController = nil
     if (@available(iOS 13.0, *)) {
         UIView *renderView = [self externalDisplayRenderView];
         BOOL shouldRoute = _externalDisplayRoutingActive && [self isAirPlayEnabled] &&
-            renderView && self.view.window.windowScene.screen == UIScreen.mainScreen;
+            renderView && [self.view.window.windowScene.session.role isEqualToString:UIWindowSceneSessionRoleApplication];
         if (shouldRoute) {
             UIView *localContainer = self.metalViewController ? self.view : _streamView;
             [SceneDelegate setExternalDisplayRenderView:renderView localContainer:localContainer];
@@ -2544,8 +2544,8 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
     
     // handle view size change for on-screen widgets
     CGSize oldSize = self.view.bounds.size;
-    CGFloat scaleX = size.width  / oldSize.width;
-    CGFloat scaleY = size.height / oldSize.height;
+    CGFloat scaleX = oldSize.width > 0 ? size.width / oldSize.width : 1;
+    CGFloat scaleY = oldSize.height > 0 ? size.height / oldSize.height : 1;
     for(OnScreenWidgetView* widget in OnScreenWidgetView.mapping.allValues){
         CGPoint oldCenter = widget.center;
         CGPoint oldStoredCenter = widget.storedCenter;

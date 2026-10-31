@@ -90,7 +90,7 @@ class HostCollectionViewController: UICollectionViewController, UICollectionView
 
         switch UIDevice.current.userInterfaceIdiom {
         case .phone:
-            horizontalPadding = 5
+            horizontalPadding = PublicUtils.isFoldableIPhone ? 22 : 5
         case .pad:
             fallthrough
         default:
@@ -195,6 +195,11 @@ class HostCollectionViewController: UICollectionViewController, UICollectionView
             }
         } else {
             collectionViewHeightConstraint?.constant = contentHeight
+        }
+
+        if PublicUtils.isFoldableIPhone {
+            flowLayout.sectionInset = UIEdgeInsets(top: 20, left: horizontalPadding, bottom: 0, right: horizontalPadding)
+            return
         }
 
         switch numberOfRowsInCollectionView() {

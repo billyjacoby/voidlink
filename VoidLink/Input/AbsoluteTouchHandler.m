@@ -116,6 +116,8 @@ static int mouseButtonForCursorMove = BUTTON_LEFT;
     }
     
     CGPoint initialPoint = [[touches anyObject] locationInView:streamView];
+    slideGestureVerticalThreshold = CGRectGetHeight(streamView.bounds) * 0.4;
+    screenWidthWithThreshold = CGRectGetWidth(streamView.bounds) - _edgeTolerance;
     if(initialPoint.y < slideGestureVerticalThreshold && (initialPoint.x < _edgeTolerance || initialPoint.x > screenWidthWithThreshold)) {
         self->touchPointSpawnedAtUpperScreenEdge = true;
         return; // we're done here. this touch event will not be sent to the remote PC.
@@ -297,4 +299,3 @@ static int mouseButtonForCursorMove = BUTTON_LEFT;
 }
 
 @end
-

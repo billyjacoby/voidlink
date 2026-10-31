@@ -88,6 +88,7 @@
 #endif
 @property (nonatomic, strong, readwrite) NSArray<TemporaryApp *> *sortedAppList;
 @property (nonatomic, assign) bool settingsViewExpanded;
+@property (nonatomic) CGSize lastAppCollectionBoundsSize;
 @end
 
 #if TARGET_OS_TV
@@ -340,6 +341,34 @@ static NSMutableSet* hostList;
     }
 }
 
+// App IDs are host-specific. Keep the Launch shortcut entirely on this device,
+// independent of the host's application list and its running-game selection.
+- (NSString *)defaultLaunchAppIDForHost:(TemporaryHost *)host {
+    if (host.uuid.length == 0) return nil;
+    return [[NSUserDefaults standardUserDefaults] dictionaryForKey:@"DefaultLaunchAppsByHostUUID"][host.uuid];
+}
+
+- (void)setDefaultLaunchAppID:(NSString *)appID forHost:(TemporaryHost *)host {
+    if (host.uuid.length == 0) return;
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSMutableDictionary *appIDs = [[defaults dictionaryForKey:@"DefaultLaunchAppsByHostUUID"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    if (appID) appIDs[host.uuid] = appID;
+    else [appIDs removeObjectForKey:host.uuid];
+    [defaults setObject:appIDs forKey:@"DefaultLaunchAppsByHostUUID"];
+}
+
+- (TemporaryApp *)defaultLaunchAppForHost:(TemporaryHost *)host {
+    NSString *preferredID = [self defaultLaunchAppIDForHost:host];
+    NSArray<TemporaryApp *> *visibleApps = [[host.appList allObjects] sortedArrayUsingSelector:@selector(compareName:)];
+    TemporaryApp *firstVisible = nil;
+    for (TemporaryApp *app in visibleApps) {
+        if (app.hidden) continue;
+        if (!firstVisible) firstVisible = app;
+        if ([app.id isEqualToString:preferredID]) return app;
+    }
+    return firstVisible;
+}
+
 - (void) updateApplist:(NSSet*) newList forHost:(TemporaryHost*)host {
     DataManager* database = [[DataManager alloc] init];
     NSMutableSet* newHostAppList = [NSMutableSet setWithSet:host.appList];
@@ -492,10 +521,19 @@ static NSMutableSet* hostList;
     if(self.revealViewController.isStreaming) return;
     _selectedHost = host;
     if (host.state == StateOnline && host.pairState == PairStatePaired && host.appList.count > 0) {
+        TemporaryApp *app = [self defaultLaunchAppForHost:host];
+        if (!app) {
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:[LocalizationHelper localizedStringForKey:@"No visible apps"]
+                                                                           message:[LocalizationHelper localizedStringForKey:@"Show an app in the app list to use the Launch button."]
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:[LocalizationHelper localizedStringForKey:@"Ok"] style:UIAlertActionStyleDefault handler:nil]];
+            [[self activeViewController] presentViewController:alert animated:YES completion:nil];
+            return;
+        }
         [self closeSettingViewAnimated:NO];
         // [self switchToAppView];
         [self updateAppsForHost:_selectedHost];
-        [self prepareToStreamApp:self.sortedAppList.firstObject];
+        [self prepareToStreamApp:app];
         [self performSegueWithIdentifier:@"createStreamFrame" sender:nil];
         return;
     }
@@ -1187,11 +1225,27 @@ static NSMutableSet* hostList;
     else {
         message = [LocalizationHelper localizedStringForKey:@"%@ is currently running", currentApp.name];
     }
+
+    NSString *defaultAppID = [self defaultLaunchAppIDForHost:app.host];
+    BOOL isDefaultLaunchApp = [app.id isEqualToString:defaultAppID];
+    if (isDefaultLaunchApp) {
+        NSString *defaultMessage = [LocalizationHelper localizedStringForKey:@"Default for the host Launch button"];
+        message = message.length ? [NSString stringWithFormat:@"%@\n%@", message, defaultMessage] : defaultMessage;
+    }
     
     UIAlertController* alertController = [UIAlertController
                                           alertControllerWithTitle: app.name
                                           message:message
                                           preferredStyle:UIAlertControllerStyleActionSheet];
+
+    if (!app.hidden || isDefaultLaunchApp) {
+        NSString *title = isDefaultLaunchApp ? @"Clear Default Launch App" : @"Set as Default Launch App";
+        [alertController addAction:[UIAlertAction actionWithTitle:[LocalizationHelper localizedStringForKey:title]
+                                                            style:UIAlertActionStyleDefault
+                                                          handler:^(UIAlertAction *action) {
+            [self setDefaultLaunchAppID:isDefaultLaunchApp ? nil : app.id forHost:app.host];
+        }]];
+    }
     
     [alertController addAction:[UIAlertAction
                                 actionWithTitle:currentApp == nil ? [LocalizationHelper localizedStringForKey:@"Launch App"] : ([app.id isEqualToString:currentApp.id] ? [LocalizationHelper localizedStringForKey: @"Resume App"] : [LocalizationHelper localizedStringForKey: @"Resume Running App"]) style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
@@ -1255,9 +1309,10 @@ static NSMutableSet* hostList;
                                                           handler:^(UIAlertAction* action) {
             app.hidden = !app.hidden;
             [self updateAppEntry:app forHost:app.host];
-            
-            // Don't call updateAppsForHost because that will nuke this
-            // app immediately if we're not showing hidden apps.
+            if (app.hidden && [app.id isEqualToString:[self defaultLaunchAppIDForHost:app.host]]) {
+                [self setDefaultLaunchAppID:nil forHost:app.host];
+            }
+            [self updateAppsForHost:app.host];
         }]];
     }
     
@@ -2258,6 +2313,11 @@ static NSMutableSet* hostList;
 
 -(void)viewDidLayoutSubviews{
     [super viewDidLayoutSubviews];
+    CGSize appBoundsSize = self.collectionView.bounds.size;
+    if (!CGSizeEqualToSize(appBoundsSize, self.lastAppCollectionBoundsSize)) {
+        self.lastAppCollectionBoundsSize = appBoundsSize;
+        [self.collectionView.collectionViewLayout invalidateLayout];
+    }
     CGSize hostCardSize = [self getHostCardSize];
     if (self.hostCollectionVC && !CGSizeEqualToSize(self.hostCollectionVC.cellSize, hostCardSize)) {
         self.hostCollectionVC.cellSize = hostCardSize;
@@ -2777,7 +2837,10 @@ static NSMutableSet* hostList;
                   layout:(UICollectionViewLayout *)collectionViewLayout
   sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
     CGSize cellSize;
-    CGFloat referenceLength = MIN(CGRectGetHeight(self.view.bounds), CGRectGetWidth(self.view.bounds));
+    // Duo changes the application window size when folded. Keep card artwork at
+    // the device's stable reference size; the collection grid itself can reflow.
+    CGRect referenceBounds = PublicUtils.isFoldableIPhone ? UIScreen.screens.firstObject.bounds : self.view.bounds;
+    CGFloat referenceLength = MIN(CGRectGetHeight(referenceBounds), CGRectGetWidth(referenceBounds));
     cellSize.height = (PublicUtils.isIPhone ? 0.365 : 0.272) * referenceLength;
     TemporaryApp* app = self.sortedAppList[indexPath.row];
     UIAppView* appView = [[UIAppView alloc] initWithApp:app cache:_boxArtCache andCallback:self];
@@ -2967,7 +3030,8 @@ static NSMutableSet* hostList;
 
 - (CGSize)getHostCardSize{
     CGSize cardSize;
-    CGFloat referenceLength = MIN(CGRectGetHeight(self.view.bounds), CGRectGetWidth(self.view.bounds));
+    CGRect referenceBounds = PublicUtils.isFoldableIPhone ? UIScreen.screens.firstObject.bounds : self.view.bounds;
+    CGFloat referenceLength = MIN(CGRectGetHeight(referenceBounds), CGRectGetWidth(referenceBounds));
     cardSize.height = (PublicUtils.isIPhone ? 0.37 : 0.25) * referenceLength;
     TemporaryHost* dummyHost = [[TemporaryHost alloc] init];
     HostCardView* dummyCard = [[HostCardView alloc] initWithHost:dummyHost];
@@ -2987,12 +3051,13 @@ static NSMutableSet* hostList;
     
     if(self.hostCollectionVC.view.superview == nil){
         [self.view addSubview:self.hostCollectionVC.view];
-        CGFloat leftPadding = PublicUtils.isIPhone ? 30 : 0;
+        CGFloat leftPadding = PublicUtils.isFoldableIPhone ? 15 : (PublicUtils.isIPhone ? 30 : 0);
+        CGFloat rightPadding = PublicUtils.isFoldableIPhone ? -15 : 0;
         self.hostCollectionVC.view.translatesAutoresizingMaskIntoConstraints = NO;
         [NSLayoutConstraint activateConstraints:@[
             [self.hostCollectionVC.view.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:0],
             [self.hostCollectionVC.view.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:leftPadding],
-            [self.hostCollectionVC.view.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:0],
+            [self.hostCollectionVC.view.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:rightPadding],
         ]];
     }
     

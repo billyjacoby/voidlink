@@ -1,10 +1,11 @@
 #import "SceneDelegate.h"
 #import "StreamFrameViewController.h"
+#import "SettingsViewController.h"
+#import "SWRevealViewController.h"
+#import "VoidLink-Swift.h"
 #if TARGET_OS_TV
 #import <GameController/GameController.h>
 #import "MainFrameViewController.h"
-#import "SettingsViewController.h"
-#import "SWRevealViewController.h"
 #endif
 
 #if TARGET_OS_TV
@@ -178,73 +179,22 @@ static UIWindow *_externalSceneWindow = nil;
     UIWindowScene *windowScene = (UIWindowScene *)scene;
     if ([session.role isEqualToString:UIWindowSceneSessionRoleApplication]) {
 #if TARGET_OS_TV
-        SettingsViewController *tvOSSettingsViewController = nil;
-#endif
-#if TARGET_OS_TV
         self.window = [[VoidLinkNoFocusWindow alloc] initWithWindowScene:windowScene];
 #else
         self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
 #endif
-        NSString *storyboardName;
-#if TARGET_OS_TV
-        storyboardName = @"Main";
-#else
-        if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
-            storyboardName = @"iPad";
-        } else {
-            storyboardName = @"iPhone";
-        }
-#endif
-        UIStoryboard *storyboard = [UIStoryboard storyboardWithName:storyboardName bundle:nil];
-        UIViewController *initialViewController = [storyboard instantiateInitialViewController];
-#if TARGET_OS_TV
-        if ([initialViewController isKindOfClass:[UINavigationController class]]) {
-            UINavigationController *frontNavigationController = (UINavigationController *)initialViewController;
-            SettingsViewController *settingsViewController = [[SettingsViewController alloc] init];
-            tvOSSettingsViewController = settingsViewController;
-            SWRevealViewController *revealViewController = [[SWRevealViewController alloc] initWithRearViewController:settingsViewController
-                                                                                                   frontViewController:frontNavigationController];
-            UIViewController *topViewController = frontNavigationController.topViewController;
-            if ([topViewController isKindOfClass:[MainFrameViewController class]]) {
-                MainFrameViewController *mainFrameViewController = (MainFrameViewController *)topViewController;
-                mainFrameViewController.settingsViewController = settingsViewController;
-                settingsViewController.mainFrameViewController = mainFrameViewController;
-                [revealViewController setDelegate:mainFrameViewController];
-                revealViewController.bounceBackOnOverdraw = NO;
-            }
-            initialViewController = revealViewController;
-        }
-#endif
-#if TARGET_OS_TV
-        self.window.rootViewController = [[VoidLinkControllerRootViewController alloc] initWithContentViewController:initialViewController];
-#else
-        self.window.rootViewController = initialViewController;
-#endif
-        [self.window makeKeyAndVisible];
-#if TARGET_OS_TV
-        // SWReveal keeps the rear controller unloaded until it is revealed.
-        // Preheat the SwiftUI settings hierarchy without consuming its
-        // launch-time settings snapshot; the first real reveal consumes it.
-        [tvOSSettingsViewController loadViewIfNeeded];
-        tvOSSettingsViewController.view.frame = self.window.bounds;
-        [tvOSSettingsViewController.view setNeedsLayout];
-        [tvOSSettingsViewController.view layoutIfNeeded];
-        if (@available(tvOS 14.0, *)) {
-            [tvOSSettingsViewController refreshSwiftUISettingsGeometry];
-        }
-#endif
-        Log(LOG_I, @"SceneDelegate: Main app scene connected.");
-
+        [PublicUtils prepareFoldableIPhoneDetectionInWindow:self.window completion:^{
+            [self finishConnectingMainAppScene];
+        }];
     } else if ([session.role isEqualToString:UIWindowSceneSessionRoleExternalDisplay]) {
         Log(LOG_I, @"SceneDelegate: External display scene connecting for screen: %@", ((UIWindowScene *)scene).screen.description);
-        UIWindowScene *windowScene = (UIWindowScene *)scene;
 #if TARGET_OS_TV
         _externalSceneWindow = [[VoidLinkNoFocusWindow alloc] initWithWindowScene:windowScene];
 #else
         _externalSceneWindow = [[UIWindow alloc] initWithWindowScene:windowScene];
 #endif
         UIViewController *externalVC = [[UIViewController alloc] init];
-        externalVC.view.backgroundColor = [UIColor blackColor]; // Set a default background
+        externalVC.view.backgroundColor = [UIColor blackColor];
         _externalSceneWindow.rootViewController = externalVC;
 
         self.window = _externalSceneWindow;
@@ -252,6 +202,72 @@ static UIWindow *_externalSceneWindow = nil;
     }
 }
 
+- (void)finishConnectingMainAppScene {
+#if !TARGET_OS_TV
+    if (@available(iOS 17.0, *)) {
+        if ([ThemeManager pinsSystemStyleForFoldable]) {
+            [self.window.windowScene registerForTraitChanges:@[UITraitUserInterfaceStyle.class]
+                                                withHandler:^(__kindof id<UITraitEnvironment> environment, UITraitCollection *previousCollection) {
+                [ThemeManager systemUserInterfaceStyleDidChange:environment.traitCollection.userInterfaceStyle];
+            }];
+        }
+    }
+#endif
+#if TARGET_OS_TV
+    SettingsViewController *tvOSSettingsViewController = nil;
+#endif
+    NSString *storyboardName;
+#if TARGET_OS_TV
+    storyboardName = @"Main";
+#else
+    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+        storyboardName = @"iPad";
+    } else {
+        storyboardName = @"iPhone";
+    }
+#endif
+    UIStoryboard *storyboard = [UIStoryboard storyboardWithName:storyboardName bundle:nil];
+    UIViewController *initialViewController = [storyboard instantiateInitialViewController];
+#if TARGET_OS_TV
+    if ([initialViewController isKindOfClass:[UINavigationController class]]) {
+        UINavigationController *frontNavigationController = (UINavigationController *)initialViewController;
+        SettingsViewController *settingsViewController = [[SettingsViewController alloc] init];
+        tvOSSettingsViewController = settingsViewController;
+        SWRevealViewController *revealViewController = [[SWRevealViewController alloc] initWithRearViewController:settingsViewController
+                                                                                               frontViewController:frontNavigationController];
+        UIViewController *topViewController = frontNavigationController.topViewController;
+        if ([topViewController isKindOfClass:[MainFrameViewController class]]) {
+            MainFrameViewController *mainFrameViewController = (MainFrameViewController *)topViewController;
+            mainFrameViewController.settingsViewController = settingsViewController;
+            settingsViewController.mainFrameViewController = mainFrameViewController;
+            [revealViewController setDelegate:mainFrameViewController];
+            revealViewController.bounceBackOnOverdraw = NO;
+        }
+        initialViewController = revealViewController;
+    }
+#endif
+#if TARGET_OS_TV
+    self.window.rootViewController = [[VoidLinkControllerRootViewController alloc] initWithContentViewController:initialViewController];
+#else
+    self.window.rootViewController = initialViewController;
+#endif
+    [self.window makeKeyAndVisible];
+#if TARGET_OS_TV
+    // SWReveal keeps the rear controller unloaded until it is revealed.
+    // Preheat the SwiftUI settings hierarchy without consuming its
+    // launch-time settings snapshot; the first real reveal consumes it.
+    [tvOSSettingsViewController loadViewIfNeeded];
+    tvOSSettingsViewController.view.frame = self.window.bounds;
+    [tvOSSettingsViewController.view setNeedsLayout];
+    [tvOSSettingsViewController.view layoutIfNeeded];
+    if (@available(tvOS 14.0, *)) {
+        [tvOSSettingsViewController refreshSwiftUISettingsGeometry];
+    }
+#endif
+    Log(LOG_I, @"SceneDelegate: Main app scene connected.");
+
+    [PublicUtils refreshCurrentScreenForWindow:self.window];
+}
 
 + (void)attachExternalDisplayRenderViewIfReady {
     NSAssert(NSThread.isMainThread, @"External display routing must run on the main thread");
@@ -318,12 +334,26 @@ static UIWindow *_externalSceneWindow = nil;
 }
 
 - (void)sceneDidBecomeActive:(UIScene *)scene {
+    [PublicUtils refreshCurrentScreenForWindow:self.window];
+    if (scene == self.window.windowScene && [ThemeManager pinsSystemStyleForFoldable]) {
+        [ThemeManager systemUserInterfaceStyleDidChange:self.window.windowScene.traitCollection.userInterfaceStyle];
+    }
 #if TARGET_OS_TV
     if (scene == self.window.windowScene &&
         [self.window.rootViewController isKindOfClass:[VoidLinkControllerRootViewController class]]) {
         [(VoidLinkControllerRootViewController *)self.window.rootViewController forceFocusSinkUpdate];
     }
 #endif
+}
+
+- (void)windowScene:(UIWindowScene *)windowScene didUpdateEffectiveGeometry:(UIWindowSceneGeometry *)previousEffectiveGeometry API_AVAILABLE(ios(26.0), tvos(26.0)) {
+    [PublicUtils refreshCurrentScreenForWindow:self.window];
+    if (windowScene == self.window.windowScene && [self.window.rootViewController isKindOfClass:[SWRevealViewController class]]) {
+        SWRevealViewController *reveal = (SWRevealViewController *)self.window.rootViewController;
+        if ([reveal.rearViewController isKindOfClass:[SettingsViewController class]]) {
+            [(SettingsViewController *)reveal.rearViewController refreshSwiftUISettingsGeometry];
+        }
+    }
 }
 
 - (void)sceneDidDisconnect:(UIScene *)scene {

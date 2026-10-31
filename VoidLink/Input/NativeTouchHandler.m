@@ -171,6 +171,8 @@
     
     //check if touch point is spawned on the left or right upper half screen edges, event to remote PC. this is for better handling in-stream slide gesture
     CGPoint initialPoint = [touch locationInView:self->streamView];
+    slideGestureVerticalThreshold = CGRectGetHeight(streamView.bounds) * 0.4;
+    screenWidthWithThreshold = CGRectGetWidth(streamView.bounds) - _edgeTolerance;
     if(initialPoint.y < slideGestureVerticalThreshold && (initialPoint.x < _edgeTolerance || initialPoint.x > screenWidthWithThreshold)) {
         [blacklistedTouches addObject:touchAddrObj];
     }

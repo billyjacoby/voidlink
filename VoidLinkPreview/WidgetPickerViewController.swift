@@ -93,6 +93,15 @@ public final class WidgetPickerViewController: UIViewController {
         navigationController?.setNavigationBarHidden(true, animated: false)
     }
 
+    public override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        #if compiler(>=6.4)
+        if #available(iOS 27.1, *) {
+            presentationState.isVerticalBarLeading = traitCollection.verticalBarEdge == .leading
+        }
+        #endif
+    }
+
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         presentationState.hasHostAppeared = false

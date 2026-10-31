@@ -60,7 +60,7 @@ static CGFloat screenWidthInPoints;
             _areVirtualControllerTaps = fabs([twoTouches[1] locationInView:self.view].x - [twoTouches[0] locationInView:self.view].x) > screenWidthInPoints/3;
         } */
         
-        _lowestTouchPointHeight = screenHeightInPoints - lowestTouchPointYCoord;
+        _lowestTouchPointHeight = CGRectGetHeight(self.view.bounds) - lowestTouchPointYCoord;
         // NSLog(@"gen _lowestTouchPointHeight %f markmark", _lowestTouchPointHeight);
         if(_immediateTriggering){
             // lowestTouchPointYCoord = 0.0; //reset for next recoginition

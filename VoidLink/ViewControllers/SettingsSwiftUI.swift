@@ -3854,10 +3854,10 @@ final class SettingsSession: NSObject, ObservableObject {
     }
 
     private var targetScreen: UIScreen {
-        if itemRegistry.externalDisplayMode.value == 1, UIScreen.screens.count > 1 {
-            return UIScreen.screens.last ?? UIScreen.main
+        if itemRegistry.externalDisplayMode.value == 1, let external = PublicUtils.externalScreen {
+            return external
         }
-        return presentingController?.view.window?.screen ?? UIScreen.main
+        return presentingController?.view.window?.screen ?? PublicUtils.currentScreen
     }
 
     private var availableDisplaySize: CGSize {
@@ -3869,7 +3869,7 @@ final class SettingsSession: NSObject, ObservableObject {
     }
 
     private func orientedNativeStreamSize(_ size: CGSize) -> CGSize {
-        let externalScreen = itemRegistry.externalDisplayMode.value == 1 && UIScreen.screens.count > 1
+        let externalScreen = itemRegistry.externalDisplayMode.value == 1 && PublicUtils.externalScreen != nil
         guard !externalScreen, itemRegistry.unlockDisplayOrientation.value == 0 else { return size }
         return CGSize(width: max(size.width, size.height), height: min(size.width, size.height))
     }
