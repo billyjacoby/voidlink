@@ -1991,6 +1991,8 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
     
     unsigned int portFlags = LiGetPortFlagsFromTerminationErrorCode(errorCode);
     unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443, portFlags);
+    Log(LOG_I, @"Connection diagnostics: error=%d, tested port flags=0x%x, external probe result=0x%x",
+        errorCode, portFlags, portTestResults);
     
     dispatch_async(dispatch_get_main_queue(), ^{
         // Allow the display to go to sleep now
@@ -2001,7 +2003,8 @@ static CGFloat VLTrackpadOrientationAngle(UIInterfaceOrientation orientation) {
         
         if (portTestResults != ML_TEST_RESULT_INCONCLUSIVE && portTestResults != 0) {
             title = [LocalizationHelper localizedStringForKey:@"Connection Error"];
-            message = @"Your device's session connection is being blocked. Streaming may not work while connected to this network.";
+            message = [NSString stringWithFormat:@"%@\n\nError code: %d\n\nA separate internet connectivity check also failed. This does not prove that streaming to your host is blocked. Try a standard resolution such as 1080p, and check the host's video encoder and stream logs.",
+                [LocalizationHelper localizedStringForKey:@"No video received from host."], errorCode];
         }
         else {
             switch (errorCode) {

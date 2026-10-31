@@ -2396,6 +2396,11 @@ static NSMutableSet* hostList;
     resolutionTable[4] = (CMVideoDimensions){ .width = (int32_t)appWindowWidth, .height = (int32_t)appWindowHeight };
     BOOL externalScreen = external != nil;
     if (externalScreen) resolutionTable[3] = resolutionTable[4];
+    for (NSInteger index = 3; index <= 4; index++) {
+        CGSize nativeSize = [NativeStreamResolution alignedSize:CGSizeMake(resolutionTable[index].width, resolutionTable[index].height)];
+        resolutionTable[index].width = (int32_t)nativeSize.width;
+        resolutionTable[index].height = (int32_t)nativeSize.height;
+    }
     Settings *settings = [[[DataManager alloc] init] retrieveSettings];
     if (!externalScreen && !settings.unlockDisplayOrientation) {
         for (NSInteger index = 3; index <= 4; index++) {

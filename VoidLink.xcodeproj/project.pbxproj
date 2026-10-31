@@ -36,6 +36,9 @@
 		2A263D4A2FF3B3F800154DEA /* PublicExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A263D492FF3B3F800154DEA /* PublicExtensions.swift */; };
 		2A263D4C2FF3B49600154DEA /* PublicExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A263D492FF3B3F800154DEA /* PublicExtensions.swift */; };
 		2A263D4F2FF3BA2800154DEA /* PublicUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A263D4E2FF3BA2800154DEA /* PublicUtils.swift */; };
+		C0DE6A110000000000000002 /* NativeStreamResolution.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE6A110000000000000001 /* NativeStreamResolution.swift */; };
+		C0DE6A110000000000000003 /* NativeStreamResolution.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE6A110000000000000001 /* NativeStreamResolution.swift */; };
+		C0DE6A110000000000000004 /* NativeStreamResolution.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE6A110000000000000001 /* NativeStreamResolution.swift */; };
 		2A263D502FF3BA2800154DEA /* PublicUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A263D4E2FF3BA2800154DEA /* PublicUtils.swift */; };
 		2A7113FD2F5A6C65001D852D /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7113FC2F5A6C65001D852D /* ThemeManager.swift */; };
 		2A7113FF2F5A6C65001D852D /* UIAppView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7113FE2F5A6C65001D852D /* UIAppView.swift */; };
@@ -365,6 +368,7 @@
 		2A039E562F72892B00546768 /* VoidLinkPreview.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoidLinkPreview.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2A263D492FF3B3F800154DEA /* PublicExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicExtensions.swift; sourceTree = "<group>"; };
 		2A263D4E2FF3BA2800154DEA /* PublicUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicUtils.swift; sourceTree = "<group>"; };
+		C0DE6A110000000000000001 /* NativeStreamResolution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeStreamResolution.swift; sourceTree = "<group>"; };
 		2A7113FC2F5A6C65001D852D /* ThemeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManager.swift; sourceTree = "<group>"; };
 		2A7113FE2F5A6C65001D852D /* UIAppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIAppView.swift; sourceTree = "<group>"; };
 		2A7114002F5A6C65001D852D /* GamepadNavigationIllustrationHud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamepadNavigationIllustrationHud.swift; sourceTree = "<group>"; };
@@ -1038,6 +1042,7 @@
 				18729EDD2E8BD68800101194 /* UUIDHelper.swift */,
 				2AC1E3822F507D80004F76C0 /* GenericUtils.swift */,
 				2A263D4E2FF3BA2800154DEA /* PublicUtils.swift */,
+				C0DE6A110000000000000001 /* NativeStreamResolution.swift */,
 				2A263D492FF3B3F800154DEA /* PublicExtensions.swift */,
 				18A0EE2B2EFBCCFD00BA853A /* GraphicUtils.swift */,
 				18780CC92F10D6CC00B90483 /* IAPManager.swift */,
@@ -1384,6 +1389,7 @@
 				2A263D4C2FF3B49600154DEA /* PublicExtensions.swift in Sources */,
 				2AC1EAFB2F92260F004EDA80 /* UIStackExtension.swift in Sources */,
 				2A263D502FF3BA2800154DEA /* PublicUtils.swift in Sources */,
+				C0DE6A110000000000000002 /* NativeStreamResolution.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1406,6 +1412,7 @@
 				A7010000000000000000000D /* VideoDecoderRenderer.m in Sources */,
 				A7010000000000000000000E /* FrameInterpolator.swift in Sources */,
 				A7010000000000000000000F /* PublicUtils.swift in Sources */,
+				C0DE6A110000000000000003 /* NativeStreamResolution.swift in Sources */,
 				A70100000000000000000010 /* AppDelegate.m in Sources */,
 				A70100000000000000000011 /* AppListResponse.m in Sources */,
 				A70100000000000000000012 /* Utils.m in Sources */,
@@ -1529,6 +1536,7 @@
 				FB89463219F646E200339C8A /* VideoDecoderRenderer.m in Sources */,
 				A1F100012FFB000100000001 /* FrameInterpolator.swift in Sources */,
 				2A263D4F2FF3BA2800154DEA /* PublicUtils.swift in Sources */,
+				C0DE6A110000000000000004 /* NativeStreamResolution.swift in Sources */,
 				FB290D0419B2C406004C83CF /* AppDelegate.m in Sources */,
 				FB9AFD401A7E127D00872C98 /* AppListResponse.m in Sources */,
 				FB89463419F646E200339C8A /* Utils.m in Sources */,

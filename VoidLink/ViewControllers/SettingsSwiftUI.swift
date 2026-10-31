@@ -3890,6 +3890,7 @@ final class SettingsSession: NSObject, ObservableObject {
     }
 
     private func orientedNativeStreamSize(_ size: CGSize) -> CGSize {
+        let size = NativeStreamResolution.alignedSize(size)
         let externalScreen = itemRegistry.externalDisplayMode.value == 1 && PublicUtils.externalScreen != nil
         guard !externalScreen, itemRegistry.unlockDisplayOrientation.value == 0 else { return size }
         return CGSize(width: max(size.width, size.height), height: min(size.width, size.height))
